@@ -131,6 +131,35 @@ let currentSettings = {
     textDirection: 'auto' as 'auto' | 'ltr' | 'rtl'
 };
 
+type MarkdownAppearanceSettings = {
+    markBackgroundColor?: string;
+    markTextColor?: string;
+    markFontWeight?: string;
+    markPadding?: string;
+    markBorderRadius?: string;
+    previewBackgroundColor?: string;
+    previewTextColor?: string;
+    previewFontSize?: string;
+    previewLineHeight?: string;
+};
+
+function cssValueOrFallback(value: unknown, fallback: string): string {
+    return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+function applyMarkdownAppearance(appearance?: MarkdownAppearanceSettings): void {
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty('--xlsx-viewer-md-mark-background', cssValueOrFallback(appearance?.markBackgroundColor, '#FF4E00'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-color', cssValueOrFallback(appearance?.markTextColor, 'inherit'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-font-weight', cssValueOrFallback(appearance?.markFontWeight, 'inherit'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-padding', cssValueOrFallback(appearance?.markPadding, '0 2px'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-border-radius', cssValueOrFallback(appearance?.markBorderRadius, '2px'));
+    rootStyle.setProperty('--xlsx-viewer-md-preview-background', cssValueOrFallback(appearance?.previewBackgroundColor, 'var(--bg-color)'));
+    rootStyle.setProperty('--xlsx-viewer-md-preview-color', cssValueOrFallback(appearance?.previewTextColor, 'var(--text-color)'));
+    rootStyle.setProperty('--xlsx-viewer-md-preview-font-size', cssValueOrFallback(appearance?.previewFontSize, 'inherit'));
+    rootStyle.setProperty('--xlsx-viewer-md-preview-line-height', cssValueOrFallback(appearance?.previewLineHeight, 'inherit'));
+}
+
 let isFocusMode = false;
 let searchMatches: Element[] = [];
 let searchCurrentIndex = -1;
@@ -1533,6 +1562,7 @@ function updateTextDirection(sampleText?: string) {
 function applySettings(settings: any, persist = false) {
     if (!settings) return;
     currentSettings = { ...currentSettings, ...settings };
+    applyMarkdownAppearance((currentSettings as { appearance?: MarkdownAppearanceSettings }).appearance);
 
     Utils.showPopupsEnabled = (currentSettings as any).showPopups !== false;
 

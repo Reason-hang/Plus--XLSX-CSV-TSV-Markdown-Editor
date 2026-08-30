@@ -7,6 +7,32 @@ import { VERSION_HISTORY_RETENTION_MS, VERSION_HISTORY_SNAPSHOT_DEBOUNCE_MS, bui
 export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider {
     constructor(private readonly context: vscode.ExtensionContext) { }
 
+    private getMarkdownSettings(isMdEnabled: boolean) {
+        const cfg = vscode.workspace.getConfiguration('xlsxViewer');
+        return {
+            stickyToolbar: cfg.get('md.stickyToolbar', true),
+            wordWrap: cfg.get('md.wordWrap', true),
+            syncScroll: cfg.get('md.syncScroll', true),
+            previewPosition: cfg.get('md.previewPosition', 'right'),
+            showOutline: cfg.get('md.showOutline', true),
+            showLineNumbers: cfg.get('md.showLineNumbers', true),
+            moveMdButtonsToEnd: cfg.get('md.moveMdButtonsToEnd', false),
+            showPopups: cfg.get('showPopups', true),
+            isMdEnabled,
+            appearance: {
+                markBackgroundColor: cfg.get('md.markBackgroundColor', '#FF4E00'),
+                markTextColor: cfg.get('md.markTextColor', 'inherit'),
+                markFontWeight: cfg.get('md.markFontWeight', 'inherit'),
+                markPadding: cfg.get('md.markPadding', '0 2px'),
+                markBorderRadius: cfg.get('md.markBorderRadius', '2px'),
+                previewBackgroundColor: cfg.get('md.previewBackgroundColor', ''),
+                previewTextColor: cfg.get('md.previewTextColor', ''),
+                previewFontSize: cfg.get('md.previewFontSize', ''),
+                previewLineHeight: cfg.get('md.previewLineHeight', '')
+            }
+        };
+    }
+
     async openCustomDocument(
         uri: vscode.Uri,
         openContext: vscode.CustomDocumentOpenContext,
@@ -157,19 +183,10 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider {
                             }
 
                             // Send settings
-                            const cfg = vscode.workspace.getConfiguration('xlsxViewer');
-                            const settings = {
-                                stickyToolbar: cfg.get('md.stickyToolbar', true),
-                                wordWrap: cfg.get('md.wordWrap', true),
-                                syncScroll: cfg.get('md.syncScroll', true),
-                                previewPosition: cfg.get('md.previewPosition', 'right'),
-                                showOutline: cfg.get('md.showOutline', true),
-                                showLineNumbers: cfg.get('md.showLineNumbers', true),
-                                moveMdButtonsToEnd: cfg.get('md.moveMdButtonsToEnd', false),
-                                showPopups: cfg.get('showPopups', true),
-                                isMdEnabled: isMdEnabled
-                            };
-                            webviewPanel.webview.postMessage({ command: 'initSettings', settings });
+                            webviewPanel.webview.postMessage({
+                                command: 'initSettings',
+                                settings: this.getMarkdownSettings(isMdEnabled)
+                            });
 
                             // Send theme
                             webviewPanel.webview.postMessage({
@@ -534,18 +551,10 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider {
                             await vscode.commands.executeCommand('xlsx-viewer.toggleMdAssociation', true);
                             
                              // Send updated settings
-                             const cfg = vscode.workspace.getConfiguration('xlsxViewer');
-                             const settings = {
-                                 stickyToolbar: cfg.get('md.stickyToolbar', true),
-                                 wordWrap: cfg.get('md.wordWrap', true),
-                                 syncScroll: cfg.get('md.syncScroll', true),
-                                 previewPosition: cfg.get('md.previewPosition', 'right'),
-                                 showOutline: cfg.get('md.showOutline', true),
-                                 showLineNumbers: cfg.get('md.showLineNumbers', true),
-                                 moveMdButtonsToEnd: cfg.get('md.moveMdButtonsToEnd', false),
-                                 isMdEnabled: true
-                             };
-                             webviewPanel.webview.postMessage({ command: 'initSettings', settings });
+                             webviewPanel.webview.postMessage({
+                                 command: 'initSettings',
+                                 settings: this.getMarkdownSettings(true)
+                             });
 
                         } catch (err) {
                             vscode.window.showErrorMessage(`Error enabling MD editor: ${err}`);
@@ -561,7 +570,6 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider {
             // Forward settings changes
             const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(e => {
                 if (e.affectsConfiguration('xlsxViewer.md') || e.affectsConfiguration('xlsxViewer') || e.affectsConfiguration('workbench.editorAssociations')) {
-                    const cfg = vscode.workspace.getConfiguration('xlsxViewer');
                     const globalCfg = vscode.workspace.getConfiguration('workbench');
                     const associations: any = globalCfg.get('editorAssociations');
                     let isMdEnabled = false;
@@ -574,18 +582,11 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider {
                         }
                     }
 
-                    const settings = {
-                        stickyToolbar: cfg.get('md.stickyToolbar', true),
-                        wordWrap: cfg.get('md.wordWrap', true),
-                        syncScroll: cfg.get('md.syncScroll', true),
-                        previewPosition: cfg.get('md.previewPosition', 'right'),
-                        showOutline: cfg.get('md.showOutline', true),
-                        showLineNumbers: cfg.get('md.showLineNumbers', true),
-                        moveMdButtonsToEnd: cfg.get('md.moveMdButtonsToEnd', false),
-                        isMdEnabled: isMdEnabled
-                    };
                     try {
-                        webviewPanel.webview.postMessage({ command: 'settingsUpdated', settings });
+                        webviewPanel.webview.postMessage({
+                            command: 'settingsUpdated',
+                            settings: this.getMarkdownSettings(isMdEnabled)
+                        });
                     } catch { }
                 }
             });

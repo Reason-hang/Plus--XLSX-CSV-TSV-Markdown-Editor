@@ -2,7 +2,7 @@
     "name": "xlsx-viewer",
     "displayName": "XLSX, CSV, TSV & Markdown Editor",
     "description": "View and edit xlsx files with colors, fonts and styles (supporting in-table editing), and view and edit CSV, TSV & Markdown files in VS Code. This is an open-source project.",
-    "version": "1.9.97",
+    "version": "1.9.98-local.1",
     "publisher": "muhammad-ahmad",
     "engines": {
         "vscode": "^1.60.0"
@@ -302,6 +302,51 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Show line numbers in code blocks."
+                },
+                "xlsxViewer.md.markBackgroundColor": {
+                    "type": "string",
+                    "default": "#FF4E00",
+                    "description": "Global background color for <mark> text in the Markdown preview."
+                },
+                "xlsxViewer.md.markTextColor": {
+                    "type": "string",
+                    "default": "inherit",
+                    "description": "Global text color for <mark> text in the Markdown preview. Use 'inherit' to follow the preview text color."
+                },
+                "xlsxViewer.md.markFontWeight": {
+                    "type": "string",
+                    "default": "inherit",
+                    "description": "Global font weight for <mark> text in the Markdown preview. Use 'inherit' to keep normal Markdown text weight."
+                },
+                "xlsxViewer.md.markPadding": {
+                    "type": "string",
+                    "default": "0 2px",
+                    "description": "Global CSS padding for <mark> text in the Markdown preview."
+                },
+                "xlsxViewer.md.markBorderRadius": {
+                    "type": "string",
+                    "default": "2px",
+                    "description": "Global CSS border radius for <mark> text in the Markdown preview."
+                },
+                "xlsxViewer.md.previewBackgroundColor": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Markdown preview pane background color. Leave empty to follow the IDE theme."
+                },
+                "xlsxViewer.md.previewTextColor": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Markdown preview pane text color. Leave empty to follow the IDE theme."
+                },
+                "xlsxViewer.md.previewFontSize": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Markdown preview pane font size, for example '15px'. Leave empty to follow the IDE theme."
+                },
+                "xlsxViewer.md.previewLineHeight": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Markdown preview pane line height, for example '1.7'. Leave empty to follow the IDE theme."
                 }
             }
         }
@@ -319,6 +364,7 @@
         "pretest": "npm run compile-tests && npm run compile && npm run lint",
         "check-types": "tsc --noEmit",
         "lint": "eslint src/**/*.ts",
+        "verify:local-patch": "node scripts/verify-local-patch.mjs",
         "test": "vscode-test"
     },
     "devDependencies": {

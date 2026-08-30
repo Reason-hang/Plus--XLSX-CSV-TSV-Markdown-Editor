@@ -2,6 +2,18 @@
     box-sizing: border-box;
 }
 
+:root {
+    --xlsx-viewer-md-mark-background: #FF4E00;
+    --xlsx-viewer-md-mark-color: inherit;
+    --xlsx-viewer-md-mark-font-weight: inherit;
+    --xlsx-viewer-md-mark-padding: 0 2px;
+    --xlsx-viewer-md-mark-border-radius: 2px;
+    --xlsx-viewer-md-preview-background: var(--bg-color);
+    --xlsx-viewer-md-preview-color: var(--text-color);
+    --xlsx-viewer-md-preview-font-size: inherit;
+    --xlsx-viewer-md-preview-line-height: inherit;
+}
+
 body {
     font-family: var(--font-family);
     padding: 0;
@@ -502,8 +514,10 @@ body.resizing * {
     padding: 32px;
     overflow-y: auto;
     max-width: 100%;
-    color: var(--text-color);
-    background: var(--bg-color);
+    color: var(--xlsx-viewer-md-preview-color);
+    background: var(--xlsx-viewer-md-preview-background);
+    font-size: var(--xlsx-viewer-md-preview-font-size);
+    line-height: var(--xlsx-viewer-md-preview-line-height);
 }
 
 .markdown-preview.hidden {
@@ -876,7 +890,6 @@ body.preview-edit-mode .markdown-preview .table-tool-btn[data-table-action="tabl
 .markdown-preview strong { font-weight: 600; }
 .markdown-preview em { font-style: italic; }
 .markdown-preview del { text-decoration: line-through; }
-.markdown-preview mark { background: var(--warning-bg); padding: 0.1em 0.2em; border-radius: 3px; }
 
 /* ===== Status Info ===== */
 .status-info {
@@ -1210,10 +1223,11 @@ body.sticky-toolbar-enabled .formatting-toolbar {
 
 /* Marked Text */
 .markdown-preview mark {
-    background-color: var(--warning-bg);
-    color: inherit;
-    padding: 0 2px;
-    border-radius: 2px;
+    background-color: var(--xlsx-viewer-md-mark-background);
+    color: var(--xlsx-viewer-md-mark-color);
+    font-weight: var(--xlsx-viewer-md-mark-font-weight);
+    padding: var(--xlsx-viewer-md-mark-padding);
+    border-radius: var(--xlsx-viewer-md-mark-border-radius);
 }
 
 /* Abbreviations */
@@ -1456,4 +1470,3 @@ body:not(.show-line-numbers) .markdown-preview .code-line::before {
 #saveToast {
     pointer-events: none !important;
 }
-
