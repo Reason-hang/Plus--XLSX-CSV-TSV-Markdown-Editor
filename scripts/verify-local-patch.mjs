@@ -16,9 +16,22 @@ const requiredDefaults = {
     'xlsxViewer.md.previewLineHeight': ''
 };
 
+const requiredThemeDefaults = {
+    'xlsxViewer.md.theme.enabled': false,
+    'xlsxViewer.md.theme.cssFile': '',
+    'xlsxViewer.md.theme.manifestFile': '',
+    'xlsxViewer.md.theme.watch': true
+};
+
 for (const [key, expectedDefault] of Object.entries(requiredDefaults)) {
     if (config[key]?.default !== expectedDefault) {
         throw new Error(`Missing or changed local patch setting: ${key}`);
+    }
+}
+
+for (const [key, expectedDefault] of Object.entries(requiredThemeDefaults)) {
+    if (config[key]?.default !== expectedDefault) {
+        throw new Error(`Missing or changed Markdown theme setting: ${key}`);
     }
 }
 
@@ -29,7 +42,10 @@ const requiredSourceMarkers = [
     'getMarkdownSettings',
     'applyMarkdownAppearance',
     '--xlsx-viewer-md-mark-background',
-    'background-color: var(--xlsx-viewer-md-mark-background)'
+    'background-color: var(--xlsx-viewer-md-mark-background)',
+    'MarkdownThemeService',
+    'applyExternalMarkdownTheme',
+    'md-sidebar-toc'
 ];
 
 for (const marker of requiredSourceMarkers) {

@@ -118,7 +118,20 @@ turndownService.use(gfm);
 import { detectIsRTL } from '../shared/rtlUtils';
 
 // Settings
-let currentSettings = {
+let currentSettings: {
+    stickyToolbar: boolean;
+    wordWrap: boolean;
+    syncScroll: boolean;
+    previewPosition: string;
+    showOutline: boolean;
+    showLineNumbers: boolean;
+    moveMdButtonsToEnd: boolean;
+    showPopups: boolean;
+    isMdEnabled: boolean;
+    textDirection: 'auto' | 'ltr' | 'rtl';
+    appearance?: MarkdownAppearanceSettings;
+    theme?: MarkdownThemePayload;
+} = {
     stickyToolbar: true,
     wordWrap: true,
     syncScroll: true,
@@ -143,6 +156,14 @@ type MarkdownAppearanceSettings = {
     previewLineHeight?: string;
 };
 
+type MarkdownThemePayload = {
+    css?: string;
+    status?: 'disabled' | 'loaded' | 'fallback' | 'error';
+    sourcePath?: string;
+    sha256?: string;
+    message?: string;
+};
+
 function cssValueOrFallback(value: unknown, fallback: string): string {
     return typeof value === 'string' && value.trim() ? value.trim() : fallback;
 }
@@ -158,6 +179,22 @@ function applyMarkdownAppearance(appearance?: MarkdownAppearanceSettings): void 
     rootStyle.setProperty('--xlsx-viewer-md-preview-color', cssValueOrFallback(appearance?.previewTextColor, 'var(--text-color)'));
     rootStyle.setProperty('--xlsx-viewer-md-preview-font-size', cssValueOrFallback(appearance?.previewFontSize, 'inherit'));
     rootStyle.setProperty('--xlsx-viewer-md-preview-line-height', cssValueOrFallback(appearance?.previewLineHeight, 'inherit'));
+}
+
+function applyExternalMarkdownTheme(theme?: MarkdownThemePayload): void {
+    const styleId = 'xlsx-viewer-external-markdown-theme';
+    const css = typeof theme?.css === 'string' ? theme.css : '';
+    const existing = document.getElementById(styleId) as HTMLStyleElement | null;
+    if (!css) {
+        existing?.remove();
+        return;
+    }
+    const style = existing || document.createElement('style');
+    style.id = styleId;
+    style.textContent = css;
+    if (!existing) {
+        document.head.appendChild(style);
+    }
 }
 
 let isFocusMode = false;
@@ -1563,6 +1600,7 @@ function applySettings(settings: any, persist = false) {
     if (!settings) return;
     currentSettings = { ...currentSettings, ...settings };
     applyMarkdownAppearance((currentSettings as { appearance?: MarkdownAppearanceSettings }).appearance);
+    applyExternalMarkdownTheme((currentSettings as { theme?: MarkdownThemePayload }).theme);
 
     Utils.showPopupsEnabled = (currentSettings as any).showPopups !== false;
 
@@ -1818,6 +1856,11 @@ window.addEventListener('message', (event) => {
         case 'initSettings':
         case 'settingsUpdated':
             applySettings(m.settings, false);
+            break;
+
+        case 'setMarkdownTheme':
+            currentSettings = { ...currentSettings, theme: m.theme };
+            applyExternalMarkdownTheme(m.theme as MarkdownThemePayload);
             break;
 
         case 'saveResult':

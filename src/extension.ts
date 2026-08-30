@@ -275,6 +275,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(new vscode.Disposable(() => {
         clearInterval(stylePruneTimer);
     }));
+    context.subscriptions.push(mdProvider);
 
     context.subscriptions.push(
         vscode.window.registerCustomEditorProvider('xlsxViewer.xlsx', spreadsheetProvider, {
@@ -386,6 +387,12 @@ export function activate(context: vscode.ExtensionContext) {
                 await vscode.commands.executeCommand('vscode.openWith', docUri, 'xlsxViewer.md');
             }
         })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('xlsx-viewer.reloadMarkdownTheme', () => mdProvider.reloadMarkdownTheme()),
+        vscode.commands.registerCommand('xlsx-viewer.showMarkdownThemeStatus', () => mdProvider.showMarkdownThemeStatus()),
+        vscode.commands.registerCommand('xlsx-viewer.revealMarkdownThemeFolder', () => mdProvider.revealMarkdownThemeFolder())
     );
 
     context.subscriptions.push(

@@ -3,9 +3,59 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { IncomingMessage } from 'http';
 import { VERSION_HISTORY_RETENTION_MS, VERSION_HISTORY_SNAPSHOT_DEBOUNCE_MS, buildGroupedVersionHistoryItems, formatVersionHistoryTimestamp, getVersionHistoryFile } from './shared/versionHistory';
+import { MarkdownThemeService } from './shared/markdownThemeService';
 
-export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider {
-    constructor(private readonly context: vscode.ExtensionContext) { }
+export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vscode.Disposable {
+    private readonly markdownThemeService = new MarkdownThemeService();
+    private readonly webviewPanels = new Set<vscode.WebviewPanel>();
+    private readonly themeOutput = vscode.window.createOutputChannel('XLSX Viewer Markdown Theme');
+    private readonly markdownThemeChangeDisposable: vscode.Disposable;
+
+    constructor(private readonly context: vscode.ExtensionContext) {
+        this.markdownThemeChangeDisposable = this.markdownThemeService.onDidChange(theme => {
+            this.themeOutput.appendLine(`[${new Date().toISOString()}] ${theme.status}: ${theme.message}`);
+            for (const panel of this.webviewPanels) {
+                void panel.webview.postMessage({ command: 'setMarkdownTheme', theme });
+            }
+        });
+        void this.markdownThemeService.loadFromConfiguration();
+    }
+
+    dispose(): void {
+        this.markdownThemeChangeDisposable.dispose();
+        this.markdownThemeService.dispose();
+        this.themeOutput.dispose();
+        this.webviewPanels.clear();
+    }
+
+    async reloadMarkdownTheme(): Promise<void> {
+        const theme = await this.markdownThemeService.reload();
+        if (theme.status === 'loaded' || theme.status === 'disabled') {
+            vscode.window.showInformationMessage(theme.message);
+        } else {
+            vscode.window.showWarningMessage(theme.message);
+        }
+    }
+
+    showMarkdownThemeStatus(): void {
+        const theme = this.markdownThemeService.getPayload();
+        this.themeOutput.show(true);
+        const message = `Markdown 主题状态：${theme.status}。${theme.message}`;
+        if (theme.status === 'loaded' || theme.status === 'disabled') {
+            vscode.window.showInformationMessage(message);
+        } else {
+            vscode.window.showWarningMessage(message);
+        }
+    }
+
+    async revealMarkdownThemeFolder(): Promise<void> {
+        const cssFile = this.markdownThemeService.getConfiguredCssFile();
+        if (!cssFile || !path.isAbsolute(cssFile)) {
+            vscode.window.showWarningMessage('请先配置绝对路径 xlsxViewer.md.theme.cssFile。');
+            return;
+        }
+        await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(path.dirname(cssFile)));
+    }
 
     private getMarkdownSettings(isMdEnabled: boolean) {
         const cfg = vscode.workspace.getConfiguration('xlsxViewer');
@@ -19,6 +69,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider {
             moveMdButtonsToEnd: cfg.get('md.moveMdButtonsToEnd', false),
             showPopups: cfg.get('showPopups', true),
             isMdEnabled,
+            theme: this.markdownThemeService.getPayload(),
             appearance: {
                 markBackgroundColor: cfg.get('md.markBackgroundColor', '#FF4E00'),
                 markTextColor: cfg.get('md.markTextColor', 'inherit'),
@@ -47,6 +98,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider {
         token: vscode.CancellationToken
     ): Promise<void> {
         try {
+            await this.markdownThemeService.loadFromConfiguration();
             const filePath = document.uri.fsPath;
             const documentDirUri = vscode.Uri.file(path.dirname(filePath));
             const workspaceFolders = vscode.workspace.workspaceFolders?.map(f => f.uri) ?? [];
@@ -154,6 +206,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider {
                 ]
             };
             webviewPanel.webview.html = this.getWebviewContent(webviewPanel);
+            this.webviewPanels.add(webviewPanel);
 
             // Handle messages from webview
             webviewPanel.webview.onDidReceiveMessage(async message => {
@@ -568,8 +621,11 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider {
             });
 
             // Forward settings changes
-            const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(e => {
+            const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(async e => {
                 if (e.affectsConfiguration('xlsxViewer.md') || e.affectsConfiguration('xlsxViewer') || e.affectsConfiguration('workbench.editorAssociations')) {
+                    if (e.affectsConfiguration('xlsxViewer.md.theme')) {
+                        await this.markdownThemeService.loadFromConfiguration();
+                    }
                     const globalCfg = vscode.workspace.getConfiguration('workbench');
                     const associations: any = globalCfg.get('editorAssociations');
                     let isMdEnabled = false;
@@ -618,6 +674,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider {
             });
 
             webviewPanel.onDidDispose(() => {
+                this.webviewPanels.delete(webviewPanel);
                 configChangeDisposable.dispose();
                 themeChangeDisposable.dispose();
                 watcherDisposable.dispose();
@@ -735,7 +792,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider {
             <div id="content">
                 <div id="loadingIndicator" class="loading-indicator">Loading Markdown...</div>
                 <div class="markdown-container" id="markdownContainer">
-                    <aside id="tocPanel" class="toc-panel hidden" aria-label="Outline">
+                    <aside id="tocPanel" class="toc-panel md-sidebar-toc hidden" aria-label="Outline">
                         <div class="toc-header">
                             <span class="toc-title">Outline</span>
                             <button id="tocCloseButton" class="toc-close" title="Hide outline">x</button>

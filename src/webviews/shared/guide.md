@@ -1,38 +1,41 @@
-# Shared Webview Components Guide
+# Webview 共享组件说明
 
-This directory contains shared components and utilities used across the different webviews (Markdown, Table, XLSX).
+本目录存放 Markdown、CSV、TSV、XLSX Webview 共用的前端组件与工具。
 
-## Components
+## 组件
 
 ### `common.ts`
-Contains common utilities and constants.
-- `vscode`: Wrapper for the VS Code API.
-- `VirtualScrollConfig`: Constants for virtual scrolling (ROW_HEIGHT, BUFFER_ROWS, CHUNK_SIZE).
-- `debounce`: Utility function for debouncing events.
+
+通用工具与常量：VS Code API 包装、虚拟滚动参数、`debounce` 等。
 
 ### `virtualLoader.ts`
-Handles data fetching for virtual scrolling.
-- `VirtualLoader`: Class that manages requests to the extension host for row data.
+
+虚拟滚动数据加载器，负责向扩展宿主请求表格行数据。
 
 ### `themeManager.ts`
-Manages theme switching (Light, Dark, VS Code High Contrast).
+
+管理浅色、深色和 VS Code 高对比度主题切换。
 
 ### `settingsManager.ts`
-Manages the settings panel and persistence.
+
+管理设置面板及设置持久化。
 
 ### `toolbarManager.ts`
-Manages the toolbar buttons and their states.
+
+管理工具栏按钮、分组与状态。
 
 ### `utils.ts`
-General utilities.
-- `$`: DOM element selector.
-- `showToast`: Displays a toast notification.
-- `writeToClipboardAsync`: Handles clipboard operations.
-- `escapeHtml`: Escapes HTML strings.
-- `normalizeCellText`: Normalizes text for cell display.
+
+常用前端工具，包括 DOM 查询、提示消息、剪贴板、HTML 转义与单元格文本规范化。
 
 ### `icons.ts`
-Contains SVG icon strings used in the toolbar.
+
+工具栏使用的 SVG 图标字符串。
 
 ### `infoTooltip.ts`
-Injects an informational tooltip into the toolbar, typically used to explain how to switch views.
+
+在工具栏注入说明性提示，用于解释视图切换等操作。
+
+## Markdown 外置主题
+
+完整主题不放在本目录。扩展宿主读取 `xlsxViewer.md.theme.cssFile` 指向的已编译 CSS，并在 Markdown Webview 中以最后加载的 `<style>` 注入。主题源码、构建器、MPE 适配层和迁移审计器均位于 `themes/markdown-theme/`；详细规则见其 [README](../../../themes/markdown-theme/README.md)。

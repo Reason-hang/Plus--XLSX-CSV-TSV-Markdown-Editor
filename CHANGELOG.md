@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.9.98-local.2 - 完整 Markdown 主题增强版
+
+- 新增版本化主题目录：`themes/markdown-theme`，以 `theme.less` 为唯一人工维护源，单次编译为 `markdown-theme.css`。
+- 新增 `theme:build`、`theme:watch`、`theme:audit` 与 `verify:theme-system`，支持 `@import` 依赖监听、SHA-256 manifest 与 MPE 样式迁移审计。
+- 新增 XLSX 插件外置主题配置、文件监听、手工重载、状态查看、主题目录打开和同路径失败回退。
+- Markdown 预览目录同时使用 `.toc-panel` 与 `.md-sidebar-toc`，便于与 MPE 主题共享目录规则。
+- 保持 XLSX、CSV、TSV provider、样式和保存链路不变。
+- 新增全中文主题、安装、迁移、回退和维护成本说明；真实三 IDE 验收仍需安装 VSIX 后完成。
+
 ## v1.9.97 - XLSX XML Namespace Compatibility
 - Fixed an issue where XLSX files with XML namespace prefixes  failed to open.
 - Added automatic XML namespace sanitization to ensure seamless loading and editing across all OpenXML spreadsheet variants.

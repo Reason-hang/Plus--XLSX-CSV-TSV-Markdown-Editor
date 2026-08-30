@@ -2,9 +2,9 @@
 
 这是一个面向 VS Code 系 IDE 的开源 Fork 项目，用于在编辑器内查看和编辑 XLSX、CSV、TSV 与 GitHub Flavored Markdown 文件。
 
-项目基于上游 [`muhammad-ahmad.xlsx-viewer`](https://github.com/Mahmadabid/XLSX-CSV-TSV-MARKDOWN-Editor-Vscode-Extension) 的 `v1.9.97` 源码构建。本仓库当前包含一个本地 Markdown 外观补丁：为 `<mark>...</mark>` 提供全局橙色高亮，以及预览背景、文字、字号和行高等配置入口。
+项目基于上游 [`muhammad-ahmad.xlsx-viewer`](https://github.com/Mahmadabid/XLSX-CSV-TSV-MARKDOWN-Editor-Vscode-Extension) 的 `v1.9.97` 源码构建。本仓库当前包含完整 Markdown 主题增强：用一份版本化 Less 主题生成单一 CSS，供本扩展与 Markdown Preview Enhanced（MPE）共同使用。
 
-> 当前版本是本地开发补丁 `1.9.98-local.1`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
+> 当前版本是本地开发补丁 `1.9.98-local.2`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
 
 ## 功能概览
 
@@ -29,7 +29,7 @@
 - 支持相对链接、本地图片、代码块复制与行号。
 - 本地补丁版支持全局 `<mark>` 高亮；Markdown 正文只需写 `<mark>重点内容</mark>`。
 
-## Markdown 全局外观补丁
+## Markdown 完整主题增强
 
 在任一 Markdown 文档中使用：
 
@@ -37,7 +37,7 @@
 这是普通文字，<mark>这是重点文字</mark>，后面继续是普通文字。
 ```
 
-默认效果为橙色背景 `#FF4E00`，不强制黑字或加粗。无需向每篇文档重复插入 `<style>` 或冗长的 `<span style="...">`。
+默认效果为橙色背景 `#FF4E00`，不强制黑字或加粗。无需向每篇文档重复插入 `<style>` 或冗长的 `<span style="...">`。主题源码只维护一次，编译后可由 XLSX 插件和 MPE 共同加载。
 
 可在 VS Code、Cursor 或 Antigravity 的用户设置中配置：
 
@@ -55,7 +55,17 @@
 }
 ```
 
-完整的配置项、安装步骤、回退方法、构建方式与验证边界，请阅读：[本地 Markdown 外观补丁说明](README-LOCAL-PATCH.md)。
+启用完整主题后，再追加以下用户设置：
+
+```jsonc
+{
+  "xlsxViewer.md.theme.enabled": true,
+  "xlsxViewer.md.theme.cssFile": "/仓库绝对路径/themes/markdown-theme/dist/markdown-theme.css",
+  "xlsxViewer.md.theme.watch": true
+}
+```
+
+完整的主题结构、MPE 适配、迁移审计、安装、回退、构建与验证边界，请阅读：[完整增强版说明](README-LOCAL-PATCH.md) 和 [主题目录说明](themes/markdown-theme/README.md)。
 
 ## 当前安装方式
 
@@ -64,10 +74,13 @@
 ```zsh
 git clone https://github.com/Reason-hang/Plus--XLSX-CSV-TSV-Markdown-Editor.git
 cd "Plus--XLSX-CSV-TSV-Markdown-Editor"
-npm ci
+npm ci --cache /private/tmp/xlsx-viewer-local-patch-npm-cache --no-audit --no-fund
+npm --prefix themes/markdown-theme ci --cache /private/tmp/xlsx-viewer-markdown-theme-npm-cache --no-audit --no-fund
+npm run theme:build
 npm run compile
 npm run verify:local-patch
-npx --yes @vscode/vsce package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.1.vsix"
+npm run verify:theme-system
+npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.2.vsix"
 ```
 
 然后在 VS Code、Cursor 或 Antigravity 中执行：
@@ -83,15 +96,17 @@ Extensions: Install from VSIX...
 ## 开发与验证
 
 ```zsh
-npm ci
+npm ci --cache /private/tmp/xlsx-viewer-local-patch-npm-cache --no-audit --no-fund
+npm run theme:build
 npm run compile
 npm run verify:local-patch
+npm run verify:theme-system
 ```
 
 构建通过后，仍应在真实 IDE 中完成下列手工验收：
 
 1. 打开 Markdown，确认编辑、保存、分栏预览和 `<mark>` 高亮正常。
-2. 修改任一 `xlsxViewer.md.*` 配置，确认预览刷新后生效。
+2. 修改 `themes/markdown-theme/theme.less` 并执行 `npm run theme:build`，确认预览自动刷新后生效。
 3. 分别打开、编辑并保存 XLSX、CSV、TSV，确认没有功能回归。
 4. 在 VS Code、Cursor、Antigravity 各至少验证一次安装与基本使用。
 
