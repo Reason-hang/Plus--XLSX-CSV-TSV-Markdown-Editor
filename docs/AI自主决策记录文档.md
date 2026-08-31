@@ -201,7 +201,8 @@
 6. 已新增 `npm run verify:security`，当前已通过；在线依赖审计已完成，锁文件仍有 8 项漏洞（4 low、3 moderate、1 high、0 critical），high 项来自测试工具链。
 7. 已移除无自动修复的 `markdown-it-katex`，改用直接 `katex` 集成并完成公式回归；同时补充 Mermaid 代码块文本和语言类名的属性转义，避免不可信 fence 元数据进入 HTML 属性。
 8. 当前版本已提升为 `1.9.98-local.3`，审计报告、README、CHANGELOG 和验证清单已同步更新。
-9. 最终 VSIX 需在文档更新后重新打包；Git 提交和 `personal/main` 远端 SHA 在推送完成后补录，作为本轮最终交付证据。
+9. 首轮代码与文档提交已完成；本次决策记录补录后重新执行 `verify:docs`、`git diff --check` 并重打包最终 VSIX。
+10. 首轮提交 `0f74795757e85bd308abe54db5db26079d13ea53` 已推送到 `personal/main`，远端 SHA 与本地 HEAD 一致；本次决策记录补录将作为后续最终文档提交的一部分。
 
 ## 未决事项与回滚
 
@@ -209,7 +210,7 @@
 
 - VS Code、Cursor、Antigravity 是否都能在真实环境安装并正常加载本地 VSIX。
 - 三套 IDE 使用同一份 CSS 时，实际目录、表格、代码块和主题刷新效果是否完全一致。
-- 目标仓库分支在最终推送前是否出现新的远端提交。
+- 决策记录补录提交推送后，需再次核对 `personal/main` 与本地 HEAD 一致。
 
 ### 回滚策略
 
