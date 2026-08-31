@@ -2,6 +2,16 @@
 
 本仓库当前文档入口已统一收录在 docs/00-文档总索引.md；关键研发与测试决策记录在 docs/AI自主决策记录文档.md。历史版本条目保留原始变更语义，不作为当前功能事实。
 
+## v1.9.98-local.3 - 安全与稳定性修复
+
+- 修复 Markdown 原始 HTML 和表格单元格内容直接进入 `innerHTML` 的注入风险，增加输出净化、CSP nonce 和安全链接校验。
+- 修复 Markdown、CSV/TSV、XLSX 保存及版本恢复缺少写入前文件一致性校验的问题，检测到外部修改时拒绝覆盖。
+- 核心文件写入改为临时文件加原子替换，降低进程中断造成半写文件的风险。
+- Markdown 版本历史改为独立快照加索引，并增加 48 小时、200 条和 50 MiB 上限；兼容迁移旧 JSON 历史。
+- 修复 CSV 分隔符模块级可变状态、UTF-8 BOM 和稀疏 XLSX 有效范围风险；转换后样式失败时不再误报为整个转换失败。
+- 新增 `npm run verify:security` 安全与回归静态测试；在线依赖审计当前仍有 8 项漏洞（4 low、3 moderate、1 high、0 critical），high 项来自测试工具链；三 IDE 实机验收仍需单独完成。
+- 移除无自动修复的 `markdown-it-katex`，改用直接 `katex` 集成并强制 `trust: false`；补充 Mermaid 代码块内容和语言类名的 HTML 属性边界转义，并按锁文件执行不带 `--force` 的可兼容传递依赖修复。
+
 ## v1.9.98-local.2 - 完整 Markdown 主题增强版
 
 - 新增版本化主题目录：`themes/markdown-theme`，以 `theme.less` 为唯一人工维护源，单次编译为 `markdown-theme.css`。

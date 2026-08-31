@@ -65,6 +65,6 @@ npm run verify:theme-system
 
 ## 冲突边界
 
-固定设置、共享 CSS、MPE 自身样式和单篇 Markdown style 标签可能同时命中同一元素。建议把颜色、排版、表格和目录统一放入共享主题；MPE 的 style.less 只保留导入；单篇 style 标签只作为旧文档兼容手段。
+固定设置、共享 CSS 和 MPE 自身样式可能同时命中同一元素。建议把颜色、排版、表格和目录统一放入共享主题；MPE 的 style.less 只保留导入。XLSX 插件会在 Markdown 渲染阶段移除正文中的 style 标签，旧文档如依赖它应迁移到外置主题。
 
 如果 XLSX 插件预览异常，先执行“显示外置 Markdown 主题状态”，确认 CSS 是否加载、路径是否正确、manifest 是否匹配，再判断是否是选择器不兼容。不要通过改写 Markdown 正文来排查主题加载问题。

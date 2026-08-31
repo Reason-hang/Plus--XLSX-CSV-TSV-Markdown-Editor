@@ -19,9 +19,6 @@ import mark from 'markdown-it-mark';
 import abbr from 'markdown-it-abbr';
 // @ts-ignore
 import { full as emoji } from 'markdown-it-emoji';
-// @ts-ignore
-import katex from 'markdown-it-katex';
-
 import hljs from 'highlight.js';
 import { ThemeManager } from '../shared/themeManager';
 import { SettingsManager } from '../shared/settingsManager';
@@ -34,6 +31,7 @@ import { vscode, debounce } from '../shared/common';
 import { FeedbackModal } from '../shared/feedbackModal';
 import { ProjectsModal } from '../shared/projectsModal';
 import { InfoTooltip } from '../shared/infoTooltip';
+import markdownItKatex from './markdownItKatex';
 import TurndownService from 'turndown';
 // @ts-ignore
 import { gfm } from 'turndown-plugin-gfm';
@@ -57,6 +55,7 @@ function markdownItMermaid(md: any) {
         }
         mermaid.initialize({
             theme: theme,
+            securityLevel: 'strict',
             gantt: {
                 axisFormatter: [
                     [
@@ -432,7 +431,7 @@ md.use(container as any, 'success');
 
 md.use(deflist);
 md.use(footnote);
-md.use(katex);
+md.use(markdownItKatex);
 md.use(sub);
 md.use(sup);
 md.use(ins);
@@ -572,7 +571,7 @@ md.renderer.rules.fence = function (tokens: any, idx: number, options: any, env:
     const firstLine = code.trim().split(/\n/)[0].trim();
     if (langName === 'mermaid' || langName === 'flowchart' || (langName === '' && (firstLine === 'gantt' || firstLine === 'sequenceDiagram' || /^graph (?:TB|BT|RL|LR|TD);?$/.test(firstLine)))) {
         const dataLine = token.map && token.level === 0 ? ` data-line="${token.map[0]}"` : '';
-        return `<div class="mermaid"${dataLine}>${code}</div>`;
+        return `<div class="mermaid"${dataLine}>${md.utils.escapeHtml(code)}</div>`;
     }
 
     let highlighted = '';
@@ -590,7 +589,7 @@ md.renderer.rules.fence = function (tokens: any, idx: number, options: any, env:
     const langLabel = langName ? `<div class="code-lang">${md.utils.escapeHtml(langName)}</div>` : `<div class="code-lang muted">text</div>`;
     const encoded = encodeURIComponent(code);
     const copyButton = `<button class="code-copy" data-code="${escapeHtmlAttr(encoded)}" title="Copy code">${Icons.Copy}<span>Copy</span></button>`;
-    const langClass = langName ? ` class="language-${langName}"` : '';
+    const langClass = langName ? ` class="language-${escapeHtmlAttr(langName)}"` : '';
 
     // Wrap each line for line numbers
     const numberedCode = wrapCodeLines(highlighted);
@@ -683,7 +682,8 @@ function renderMermaidFlowcharts() {
 
     mermaidLib.initialize({
         startOnLoad: false,
-        theme: isDark ? 'dark' : 'default'
+        theme: isDark ? 'dark' : 'default',
+        securityLevel: 'strict'
     });
 
     const nodes = document.querySelectorAll('.mermaid');
@@ -696,6 +696,55 @@ function renderMermaidFlowcharts() {
     }
 }
 
+function isSafeRenderedUrl(value: string, attributeName: string): boolean {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) {
+        return !trimmed.startsWith('//');
+    }
+
+    try {
+        const protocol = new URL(trimmed, 'https://xlsx-viewer.invalid/').protocol.toLowerCase();
+        if (attributeName === 'src') {
+            return protocol === 'http:' || protocol === 'https:' ||
+                (protocol === 'data:' && /^data:image\/(?:png|gif|jpe?g|webp|bmp|avif)(?:;|,)/i.test(trimmed));
+        }
+        return protocol === 'http:' || protocol === 'https:' || protocol === 'mailto:';
+    } catch {
+        return false;
+    }
+}
+
+function sanitizeRenderedMarkdownHtml(html: string): string {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+
+    template.content.querySelectorAll(
+        'script, style, iframe, object, embed, base, meta, link, portal, form, foreignObject'
+    ).forEach(element => element.remove());
+
+    template.content.querySelectorAll<HTMLElement>('*').forEach(element => {
+        Array.from(element.attributes).forEach(attribute => {
+            const name = attribute.name.toLowerCase();
+            if (name.startsWith('on') || name === 'srcdoc' || name === 'srcset') {
+                element.removeAttribute(attribute.name);
+                return;
+            }
+
+            if (name === 'style' && /url\s*\(|@import|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:/i.test(attribute.value)) {
+                element.removeAttribute(attribute.name);
+                return;
+            }
+
+            const urlAttributes = new Set(['href', 'src', 'xlink:href', 'formaction', 'action', 'poster', 'cite', 'background']);
+            if (urlAttributes.has(name) && !isSafeRenderedUrl(attribute.value, name)) {
+                element.removeAttribute(attribute.name);
+            }
+        });
+    });
+
+    return template.innerHTML;
+}
+
 function renderMarkdown(content: string) {
     const preview = $('markdownPreview');
     if (preview) {
@@ -705,7 +754,7 @@ function renderMarkdown(content: string) {
         const normalizedContent = sanitizeMarkdownCopyLinkArtifacts(content || '');
         const tokens = md.parse(normalizedContent, env);
         addHeadingIds(tokens);
-        preview.innerHTML = md.renderer.render(tokens, md.options, env);
+        preview.innerHTML = sanitizeRenderedMarkdownHtml(md.renderer.render(tokens, md.options, env));
         if (savedScrollTop > 0 || savedScrollLeft > 0) {
             preview.scrollTop = savedScrollTop;
             preview.scrollLeft = savedScrollLeft;
@@ -3865,7 +3914,8 @@ if (currentSettings) {
 
 if ((md as any).mermaid) {
     (md as any).mermaid.initialize({
-        startOnLoad: false
+        startOnLoad: false,
+        securityLevel: 'strict'
     });
 }
 

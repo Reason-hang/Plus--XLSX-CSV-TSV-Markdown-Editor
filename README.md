@@ -14,7 +14,9 @@
 
 项目基于上游 [`muhammad-ahmad.xlsx-viewer`](https://github.com/Mahmadabid/XLSX-CSV-TSV-MARKDOWN-Editor-Vscode-Extension) 的 `v1.9.97` 源码构建。本仓库当前包含完整 Markdown 主题增强：用一份版本化 Less 主题生成单一 CSS，供本扩展与 Markdown Preview Enhanced（MPE）共同使用。
 
-> 当前版本是本地开发补丁 `1.9.98-local.2`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
+> 当前版本是本地开发补丁 `1.9.98-local.3`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
+
+> 安全提示：当前锁文件在线审计结果为 8 项漏洞（4 low、3 moderate、1 high、0 critical）；运行时公式渲染已移除无修复的 `markdown-it-katex`，当前 high 项来自测试工具链。个人使用应优先打开可信 Markdown，公开发布前必须完成依赖处置。
 
 ## 功能概览
 
@@ -38,6 +40,7 @@
 - 自动目录面板，便于浏览长文档。
 - 支持相对链接、本地图片、代码块复制与行号。
 - 本地补丁版支持全局 `<mark>` 高亮；Markdown 正文只需写 `<mark>重点内容</mark>`。
+- 对 Markdown 和表格外部输入执行 HTML/属性净化；保存前检测文件是否被外部修改，避免静默覆盖。
 
 ## Markdown 完整主题增强
 
@@ -77,6 +80,8 @@
 
 完整的主题结构、MPE 适配、迁移审计、安装、回退、构建与验证边界，请阅读：[完整增强版说明](README-LOCAL-PATCH.md) 和 [主题目录说明](themes/markdown-theme/README.md)。
 
+安全审计与修复证据见：[代码审计报告](docs/05-测试与验收/代码审计报告-2026-08-31.md)。
+
 ## 当前安装方式
 
 完整文档入口见 [文档总索引](docs/00-文档总索引.md)；其中包含产品、架构、迁移、开发、测试、运维和 AI 决策记录。
@@ -90,10 +95,11 @@ npm ci --cache /private/tmp/xlsx-viewer-local-patch-npm-cache --no-audit --no-fu
 npm --prefix themes/markdown-theme ci --cache /private/tmp/xlsx-viewer-markdown-theme-npm-cache --no-audit --no-fund
 npm run theme:build
 npm run compile
+npm run verify:security
 npm run verify:local-patch
 npm run verify:theme-system
 npm run verify:docs
-npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.2.vsix"
+npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.3.vsix"
 ```
 
 然后在 VS Code、Cursor 或 Antigravity 中执行：
@@ -111,13 +117,15 @@ Extensions: Install from VSIX...
 ```zsh
 npm ci --cache /private/tmp/xlsx-viewer-local-patch-npm-cache --no-audit --no-fund
 npm run theme:build
+npm run theme:audit
 npm run compile
+npm run verify:security
 npm run verify:local-patch
 npm run verify:theme-system
 npm run verify:docs
 ```
 
-构建通过后，仍应在真实 IDE 中完成下列手工验收：
+构建通过后，仍应在真实 IDE 中完成下列手工验收；自动化结果不能替代现场验收：
 
 1. 打开 Markdown，确认编辑、保存、分栏预览和 `<mark>` 高亮正常。
 2. 修改 `themes/markdown-theme/theme.less` 并执行 `npm run theme:build`，确认预览自动刷新后生效。

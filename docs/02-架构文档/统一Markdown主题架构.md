@@ -80,9 +80,9 @@ XLSX 插件由扩展宿主读取配置，校验外置 CSS 后把内容作为独�
 1. 扩展内置样式。
 2. xlsxViewer.md.mark* 和 preview* 固定设置。
 3. 外置 markdown-theme.css。
-4. Markdown 正文内的 style 标签，仅用于兼容旧文档，不建议新增。
+4. Markdown 正文内的安全 HTML；`<style>` 标签会在渲染净化阶段移除，主题规则应放在外置 CSS。
 
-外置主题是用户配置文件，加载前会进行路径、大小、资源和全局选择器校验。manifest 的 SHA-256 不匹配只提示修复建议，不阻断 CSS 本身加载。
+外置主题是用户配置文件，加载前会进行路径、大小、资源和全局选择器校验。Markdown 渲染结果还会移除脚本、`<style>`、事件属性和不安全链接；Mermaid 使用 `securityLevel: strict`。manifest 的 SHA-256 不匹配只提示修复建议，不阻断 CSS 本身加载。
 
 ## 扩展入口
 

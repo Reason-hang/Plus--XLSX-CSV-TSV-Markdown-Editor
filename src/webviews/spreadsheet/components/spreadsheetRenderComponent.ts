@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { escapeAttribute, escapeHtml } from '../../../shared/htmlUtils';
+
 export function getExcelColumnLabel(n: number): string {
     let label = '';
     while (n > 0) {
@@ -42,19 +44,6 @@ export function formatCellStyle(style: any): string {
     }
 
     return css;
-}
-
-function escapeHtml(input: string): string {
-    return input
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-function escapeAttribute(input: string): string {
-    return escapeHtml(input);
 }
 
 function parseBooleanLike(value: unknown): boolean | null {
@@ -217,7 +206,22 @@ export function renderDropdownCellContent(options: DropdownCellContentOptions): 
         + '</span>';
 }
 
-function renderCellContent(cellData: any, isPlainView: boolean, allowInteractiveControls: boolean, isEditMode: boolean): string {
+function sanitizeRichTextHtml(value: unknown): string {
+    const raw = value === null || value === undefined ? '' : String(value);
+    if (!raw) return '&nbsp;';
+
+    // The provider emits only these exact tags for Excel rich text. If a
+    // value has any other tag, render it as text instead of trusting it.
+    const remaining = raw
+        .replace(/<\/?b>/g, '')
+        .replace(/<\/?i>/g, '')
+        .replace(/<span style="color: #[0-9a-fA-F]{6,8};">/g, '')
+        .replace(/<\/span>/g, '');
+
+    return /[<>]/.test(remaining) ? escapeHtml(raw) : raw;
+}
+
+export function renderCellContent(cellData: any, isPlainView: boolean, allowInteractiveControls: boolean, isEditMode: boolean): string {
     const cellType = toCellType(cellData);
     const cellDisplayValue = toCellDisplayValue(cellData);
 
@@ -277,7 +281,7 @@ function renderCellContent(cellData: any, isPlainView: boolean, allowInteractive
         const safeSrc = escapeAttribute(src);
         const fallbackText = cellDisplayValue ? '<span class="cell-image-label">' + escapeHtml(cellDisplayValue) + '</span>' : '';
         if (!safeSrc) {
-            return '<span class="cell-content">' + (cellDisplayValue || '&nbsp;') + '</span>';
+            return '<span class="cell-content">' + (cellDisplayValue ? escapeHtml(cellDisplayValue) : '&nbsp;') + '</span>';
         }
 
         return '<span class="cell-content cell-image-content">'
@@ -286,7 +290,9 @@ function renderCellContent(cellData: any, isPlainView: boolean, allowInteractive
             + '</span>';
     }
 
-    const text = cellData?.value || '&nbsp;';
+    const text = cellData?.isRichText === true
+        ? sanitizeRichTextHtml(cellData?.value)
+        : (cellDisplayValue ? escapeHtml(cellDisplayValue) : '&nbsp;');
     return '<span class="cell-content">' + text + '</span>';
 }
 
@@ -378,8 +384,8 @@ export function createXlsxRowHtml(params: XlsxRowHtmlParams): string {
                 if (cellData.hasDefaultBorder) html += ' data-default-border="true"';
             }
             if (cellData.isEmpty) html += ' data-empty="true"';
-            if (cellData.hyperlink) html += ' data-hyperlink="' + String(cellData.hyperlink).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;') + '"';
-            html += ' data-original-color="' + (cellData.originalColor || 'rgb(0, 0, 0)') + '"';
+            if (cellData.hyperlink) html += ' data-hyperlink="' + escapeAttribute(String(cellData.hyperlink)) + '"';
+            html += ' data-original-color="' + escapeAttribute(String(cellData.originalColor || 'rgb(0, 0, 0)')) + '"';
 
             if (!isPlainView) {
                 if (cellData.rowspan > 1) html += ' rowspan="' + cellData.rowspan + '"';
@@ -402,7 +408,7 @@ export function createXlsxRowHtml(params: XlsxRowHtmlParams): string {
             }
 
             if (cellStyleStr) {
-                html += ' style="' + cellStyleStr + '"';
+                html += ' style="' + escapeAttribute(cellStyleStr) + '"';
             }
             html += '>';
             html += renderCellContent(cellData, isPlainView, allowInteractiveControls, isEditMode);

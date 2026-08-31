@@ -6,8 +6,12 @@ import * as path from 'path';
 import { createHash } from 'crypto';
 import { VERSION_HISTORY_RETENTION_MS, buildGroupedVersionHistoryItems as buildSharedVersionHistoryItems, formatVersionHistoryTimestamp, getVersionHistoryDir } from './shared/versionHistory';
 import { convertARGBToRGBA, isShadeOfBlack, isShadeOfWhite, loadExcelWorkbook } from './spreadsheet/spreadsheetUtilities';
-import { convertTabularFile, readTabularFile, detectTabularFileType, writeTabularFile, TabularFileType, setCsvSeparatorOverride } from './shared/fileConversionService';
+import { convertTabularFile, readTabularFile, detectTabularFileType, writeTabularFile, TabularFileType } from './shared/fileConversionService';
 import { StyleStorageService } from './shared/styleStorageService';
+import { isAllowedExternalUri } from './shared/externalUri';
+import { getCellValueForDisplay } from './spreadsheet/cellValue';
+import { writeBufferFileAtomically, writeFileAtomically } from './shared/atomicFile';
+import { hashBuffer, hashFile } from './shared/fileFingerprint';
 
 function borderEditToCssValue(enabled: boolean, style?: string, color?: string): string {
     if (!enabled) return '';
@@ -225,7 +229,6 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
         webviewPanel: vscode.WebviewPanel,
         token: vscode.CancellationToken
     ): Promise<void> {
-        setCsvSeparatorOverride(undefined);
         const webview = webviewPanel.webview;
 
         webview.options = {
@@ -250,6 +253,17 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
         let currentIsPlainView = false;
         let isSaving = false;
         let lastSaveTime = 0;
+        let lastKnownFileHash = '';
+
+        const assertFileUnchanged = async () => {
+            if (!lastKnownFileHash) {
+                return;
+            }
+            const currentHash = await hashFile(filePath);
+            if (currentHash !== lastKnownFileHash) {
+                throw new Error('文件已被外部修改，请先重新加载后再保存。');
+            }
+        };
 
         type VersionHistoryEntry = {
             id: string;
@@ -843,6 +857,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
         const saveDelimitedFileAndStyles = async (sourceType: TabularFileType, edits: any[], richEdits: any[], styleEdits: any[], operations: any[], isAutosave: boolean) => {
             const requiresWorkbookRefresh = edits.length > 0 || operations.length > 0 || styleEdits.length > 0 || richEdits.length > 0;
+            await assertFileUnchanged();
             const { workbook: tabularData } = await readTabularFile(document.uri.fsPath, sourceType);
             const rows = tabularData.sheets[0]?.rows ? tabularData.sheets[0].rows.map(row => [...row]) : [];
 
@@ -982,9 +997,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 nextStyles[key] = nextStyle;
             }
 
+            await assertFileUnchanged();
             await writeTabularFile(document.uri.fsPath, {
                 sheets: [{ name: 'Sheet1', rows }]
             }, sourceType);
+            lastKnownFileHash = await hashFile(filePath);
             lastSaveTime = Date.now();
 
             const finalCells: Record<string, { style?: any; control?: any }> = {};
@@ -1043,6 +1060,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
             const targetPath = targetUri.fsPath.toLowerCase().endsWith('.xlsx') ? targetUri.fsPath : `${targetUri.fsPath}.xlsx`;
 
+            await assertFileUnchanged();
             await convertTabularFile({
                 sourcePath: document.uri.fsPath,
                 targetPath,
@@ -1051,20 +1069,30 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             });
 
             const storedStyles = (await this.styleStorage.getStyles(document.uri)) ?? {};
+            let styleApplyError: string | null = null;
             if (Object.keys(storedStyles).length > 0) {
-                const workbook = new Excel.Workbook();
-                await loadExcelWorkbook(targetPath, workbook);
-                const worksheet = workbook.worksheets[0];
-                if (worksheet) {
+                try {
+                    const workbook = new Excel.Workbook();
+                    await loadExcelWorkbook(targetPath, workbook);
+                    const worksheet = workbook.worksheets[0];
+                    if (!worksheet) {
+                        throw new Error('Converted workbook has no worksheet');
+                    }
                     applyStoredStylesToWorksheet(worksheet, storedStyles);
-                    await workbook.xlsx.writeFile(targetPath);
+                    await writeFileAtomically(targetPath, temporaryPath => workbook.xlsx.writeFile(temporaryPath));
+                    await this.styleStorage.clearStyles(document.uri);
+                } catch (error) {
+                    styleApplyError = String(error);
                 }
             }
 
-            await this.styleStorage.clearStyles(document.uri);
             await this.styleStorage.clearPreferredViewMode(document.uri);
             hasActiveTemporaryStyles = false;
             shouldOpenDelimitedInStyledMode = false;
+
+            if (styleApplyError) {
+                vscode.window.showWarningMessage(`文件已转换为 XLSX，但样式未能应用：${styleApplyError}`);
+            }
 
             await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
             await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(targetPath), 'xlsxViewer.xlsx');
@@ -1089,7 +1117,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
         const saveHistory = async (entries: VersionHistoryEntry[]) => {
             await ensureHistoryDir();
-            await fs.promises.writeFile(getHistoryIndexPath(), JSON.stringify(entries), 'utf8');
+            await writeFileAtomically(getHistoryIndexPath(), temporaryPath => fs.promises.writeFile(temporaryPath, JSON.stringify(entries), 'utf8'));
         };
 
         const pruneHistory = async (entries?: VersionHistoryEntry[]) => {
@@ -1144,7 +1172,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 const snapshotFile = `${id}.${currentFileType}`;
 
                 await ensureHistoryDir();
-                await fs.promises.writeFile(getSnapshotPath(snapshotFile), snapshotBytes);
+                await writeFileAtomically(getSnapshotPath(snapshotFile), temporaryPath => fs.promises.writeFile(temporaryPath, snapshotBytes));
 
                 history.push({
                     id,
@@ -1474,6 +1502,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
             // Start compact and let the webview grow row header width only when needed for visible rows.
             rowHeaderWidth = 40;
+            if (path.resolve(sourcePath) === path.resolve(filePath)) {
+                lastKnownFileHash = await hashFile(filePath);
+            }
         };
 
         // Listen for messages
@@ -1571,7 +1602,13 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     }
 
                     const snapshotBuffer = await fs.promises.readFile(getSnapshotPath(entry.snapshotFile));
-                    await vscode.workspace.fs.writeFile(document.uri, snapshotBuffer);
+                    await assertFileUnchanged();
+                    if (document.uri.scheme === 'file') {
+                        await writeBufferFileAtomically(filePath, snapshotBuffer);
+                    } else {
+                        await vscode.workspace.fs.writeFile(document.uri, snapshotBuffer);
+                    }
+                    lastKnownFileHash = hashBuffer(snapshotBuffer);
 
                     previewVersionId = null;
                     previewVersionTimestamp = null;
@@ -1619,7 +1656,6 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                         await cfg.update(`${prefix}.spaciousCells`, !!s.spaciousCells, vscode.ConfigurationTarget.Global);
                         await cfg.update(`${prefix}.textWrap`, !!s.textWrap, vscode.ConfigurationTarget.Global);
                         if (currentFileType === 'csv' && (s.csvSeparator === ',' || s.csvSeparator === ';')) {
-                            setCsvSeparatorOverride(s.csvSeparator);
                             await cfg.update('csv.separator', s.csvSeparator, vscode.ConfigurationTarget.Global);
                             // Reload immediately so delimiter change takes effect without reopening
                             await loadWorkbookPayload();
@@ -1712,7 +1748,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             if (message?.command === 'openExternal') {
                 try {
                     const url = typeof message.url === 'string' ? message.url : '';
-                    if (url) {
+                    if (isAllowedExternalUri(url)) {
                         await vscode.env.openExternal(vscode.Uri.parse(url));
                     }
                 } catch {
@@ -1855,6 +1891,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                         return;
                     }
 
+                    await assertFileUnchanged();
                     const workbook = new Excel.Workbook();
                     await loadExcelWorkbook(document.uri.fsPath, workbook);
                     const ws = workbook.worksheets[sheetIndex];
@@ -2314,7 +2351,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                         }
                     }
 
-                    await workbook.xlsx.writeFile(document.uri.fsPath);
+                    await assertFileUnchanged();
+                    await writeFileAtomically(document.uri.fsPath, temporaryPath => workbook.xlsx.writeFile(temporaryPath));
+                    lastKnownFileHash = await hashFile(filePath);
                     lastSaveTime = Date.now();
                     await persistVersionSnapshot();
                     previewVersionId = null;
@@ -2646,6 +2685,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
                 const cellData: any = {
                     value: cellValue,
+                    isRichText: cell.type === Excel.ValueType.RichText,
                     hyperlink: hyperlinkUrl,
                     style: cellStyle,
                     cellType,
@@ -3051,56 +3091,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
     }
 
     private getCellValue(cell: Excel.Cell): string {
-        if (!cell || !cell.value) return '';
-
-        // Some ExcelJS hyperlink cells expose the URL via cell.hyperlink even when cell.type isn't Hyperlink.
-        // In those cases, keep showing the displayed text/value.
-        const anyCell = cell as any;
-        if (typeof anyCell.hyperlink === 'string' && anyCell.hyperlink) {
-            const v = cell.value as any;
-            if (typeof v === 'string') return v;
-            if (v && typeof v === 'object' && typeof v.text === 'string') return v.text;
-        }
-
-        // Handle different value types with proper type checking
-        if (cell.type === Excel.ValueType.Hyperlink) {
-            const hyperlinkValue = cell.value as Excel.CellHyperlinkValue;
-            return hyperlinkValue.text || '';
-        } else if (cell.type === Excel.ValueType.Formula) {
-            return cell.result?.toString() || '';
-        } else if (cell.type === Excel.ValueType.RichText) {
-            const richTextValue = cell.value as Excel.CellRichTextValue;
-            return richTextValue.richText.map((rt: any) => {
-                let txt = (rt.text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                if (rt.font) {
-                    if (rt.font.bold) txt = `<b>${txt}</b>`;
-                    if (rt.font.italic) txt = `<i>${txt}</i>`;
-                    if (rt.font.color && rt.font.color.argb) {
-                        const argb = rt.font.color.argb;
-                        let hex = argb;
-                        if (argb.length === 8) {
-                            hex = '#' + argb.substring(2);
-                        } else if (argb.length === 6) {
-                            hex = '#' + argb;
-                        }
-                        if (hex.startsWith('#')) {
-                            txt = `<span style="color: ${hex};">${txt}</span>`;
-                        }
-                    }
-                }
-                return txt;
-            }).join('');
-        } else if (cell.type === Excel.ValueType.Date) {
-            const dateValue = cell.value as Date;
-            return dateValue.toLocaleDateString(undefined, { timeZone: 'UTC' });
-        } else if (cell.value instanceof Date) {
-            // Additional check for Date objects
-            return cell.value.toLocaleDateString(undefined, { timeZone: 'UTC' });
-        } else if (typeof cell.value === 'boolean') {
-            return cell.value ? 'TRUE' : 'FALSE';
-        } else {
-            return cell.value.toString();
-        }
+        return getCellValueForDisplay(cell);
     }
 
     private getCellHyperlink(cell: Excel.Cell): string {
@@ -3299,5 +3290,3 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
 
 }
-
-

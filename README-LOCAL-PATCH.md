@@ -13,9 +13,11 @@
 
 ## 1. 目标与边界
 
-本 Fork 是个人侧载用的补丁版，基于上游 `muhammad-ahmad.xlsx-viewer` v1.9.97。当前版本为 `1.9.98-local.2`，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`，因此同一个 IDE 中会替换官方扩展，不能并存。
+本 Fork 是个人侧载用的补丁版，基于上游 `muhammad-ahmad.xlsx-viewer` v1.9.97。当前版本为 `1.9.98-local.3`，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`，因此同一个 IDE 中会替换官方扩展，不能并存。
 
-本次完整增强版的目标是：只维护一份 Less 主题源码，生成一份 CSS，同时供本扩展和 Markdown Preview Enhanced（MPE）使用；Markdown 正文只写语义明确的 `<mark>重点</mark>`，不再为每篇文档插入 `<style>` 或冗长的 `<span style="...">`。
+当前锁文件在线审计结果为 8 项漏洞（4 low、3 moderate、1 high、0 critical）。运行时公式渲染已改为直接使用 `katex`，移除了无自动修复的 `markdown-it-katex`；本版本已完成代码级净化和不带 `--force` 的传递依赖锁文件修复，但测试工具链的审计残余仍未全部关闭。
+
+本次完整增强版的目标是：只维护一份 Less 主题源码，生成一份 CSS，同时供本扩展和 Markdown Preview Enhanced（MPE）使用；Markdown 正文只写语义明确的 `<mark>重点</mark>`，不再为每篇文档插入 `<style>` 或冗长的 `<span style="...">`。本版本同时收敛外部输入净化、保存前一致性校验、原子写入和版本历史上限。
 
 不在本次范围：重命名 Publisher、发布 Marketplace、修改 XLSX/CSV/TSV 作业逻辑，或自动改写现有 MPE 的 `style.less`。
 
@@ -88,7 +90,7 @@ Markdown: 显示外置 Markdown 主题状态
 Markdown: 打开外置 Markdown 主题目录
 ```
 
-主题加载约束：仅接受 2 MiB 以内的本地、已编译 CSS；拒绝 `@import`、远程/data/javascript 资源与 `html`、`body` 全局选择器。若当前 CSS 保存坏了，插件会继续保留同一路径上一次成功加载的 CSS，不会使预览白屏。
+主题加载约束：仅接受 2 MiB 以内的本地、已编译 CSS；拒绝 `@import`、远程/data/javascript 资源与 `html`、`body` 全局选择器。若当前 CSS 保存坏了，插件会继续保留同一路径上一次成功加载的 CSS，不会使预览白屏。Markdown 渲染结果会移除脚本、`<style>`、事件属性和不安全链接；普通安全的 `mark` 内联样式仍可兼容旧文档。
 
 ## 5. MPE 适配
 
@@ -111,9 +113,9 @@ npm run theme:audit -- "/你的/MPE/style.less"
 1. 扩展内置样式：最低优先级。
 2. 旧的 `xlsxViewer.md.mark*`、`preview*` 固定配置：用于不启用外置主题的轻量场景。
 3. 外置 `markdown-theme.css`：启用后最后注入，覆盖同一选择器。
-4. Markdown 正文内 `<style>`：仍可能覆盖预览，但不推荐继续使用。
+4. Markdown 正文内的安全 HTML：`<style>` 会被净化移除；高亮优先使用 `<mark>` 和外置主题。
 
-推荐统一使用外置主题，不要同时把同一属性写在固定设置、主题 CSS 与单篇 `<style>` 中。
+推荐统一使用外置主题，不要同时把同一属性写在固定设置、主题 CSS 与单篇内联样式中。
 
 ## 7. 构建、验证与 VSIX 安装
 
@@ -123,11 +125,12 @@ npm run theme:build
 npm run theme:audit
 npm run check-types
 npm run lint
+npm run verify:security
 npm run package
 npm run verify:local-patch
 npm run verify:theme-system
 npm run verify:docs
-npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.2.vsix"
+npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.3.vsix"
 ```
 
 通过 IDE 的 `Extensions: Install from VSIX...` 安装；不要直接把解压目录复制到 `~/.vscode/extensions`、`~/.cursor/extensions` 或 `~/.antigravity/extensions`。安装后关闭该扩展的自动更新，避免被官方版本覆盖。
@@ -148,5 +151,7 @@ npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.
 | 迁移旧 MPE 样式 | 30–90 分钟 | 中，审计器可缩小人工范围 |
 | 上游小版本升级 | 1–3 小时 | 中，需重新验证 Markdown 与三类表格 |
 | 上游重构 Markdown Webview | 4–8 小时 | 中高，需要重新核对注入点与 DOM class |
+
+公开发布前的额外成本：需要处置测试工具链的 high/moderate 依赖残余，并重新完成完整构建、依赖审计、许可证核验和三 IDE 人工验收；公式渲染器已完成本地替换，后续只需持续验证数学公式回归。
 
 回退时重新安装官方扩展即可；Markdown 源文件只含标准 `<mark>`，不会丢失内容。保留当前 VSIX、Git 提交与 `themes/markdown-theme`，再升级或回退。

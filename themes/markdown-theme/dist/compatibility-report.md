@@ -1,7 +1,7 @@
 # Markdown 主题兼容审计报告
 
 - 输入文件：examples/mpe-style.less
-- 审计时间：2026-08-31T04:20:01.495Z
+- 审计时间：2026-08-31T13:37:10.772Z
 - 迁移草稿：dist/migration-draft.less
 
 ## 目录

@@ -12,6 +12,7 @@ import {
     getTargetTabularFileTypes,
     TabularFileType
 } from './shared/fileConversionService';
+import { writeFileAtomically } from './shared/atomicFile';
 
 function resolveDocumentUri(uri?: vscode.Uri): vscode.Uri | undefined {
     if (uri instanceof vscode.Uri) {
@@ -253,7 +254,7 @@ async function applyStoredStylesToXlsxFile(filePath: string, storedStyles: Recor
         applyStyleEditToCell(worksheet.getRow(address.row).getCell(address.col), styleEdit);
     }
 
-    await workbook.xlsx.writeFile(filePath);
+    await writeFileAtomically(filePath, temporaryPath => workbook.xlsx.writeFile(temporaryPath));
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -555,18 +556,27 @@ export function activate(context: vscode.ExtensionContext) {
                     targetType: picked.type
                 });
 
+                let styleApplyError: string | null = null;
                 if ((sourceType === 'csv' || sourceType === 'tsv') && result.targetType === 'xlsx') {
                     const storedStyles = await styleStorage.getStyles(sourceUri);
-                    if (storedStyles) {
-                        await applyStoredStylesToXlsxFile(finalTargetPath, storedStyles);
-                        await styleStorage.clearStyles(sourceUri);
+                    if (storedStyles && Object.keys(storedStyles).length > 0) {
+                        try {
+                            await applyStoredStylesToXlsxFile(finalTargetPath, storedStyles);
+                            await styleStorage.clearStyles(sourceUri);
+                        } catch (error) {
+                            styleApplyError = String(error);
+                        }
                     }
                 }
 
-                const message = result.droppedSheets
+                const conversionMessage = result.droppedSheets
                     ? `Converted to ${targetInfo.label}. Only the first worksheet was kept because ${targetInfo.label} supports a single sheet.`
                     : `Converted to ${targetInfo.label}.`;
-                vscode.window.showInformationMessage(message);
+                if (styleApplyError) {
+                    vscode.window.showWarningMessage(`${conversionMessage} The file was created, but stored styles could not be applied: ${styleApplyError}`);
+                } else {
+                    vscode.window.showInformationMessage(conversionMessage);
+                }
 
                 const targetViewType = getViewTypeForFileType(result.targetType);
                 if (targetViewType) {
