@@ -1,5 +1,16 @@
 # XLSX, CSV, TSV & Markdown Editor：完整增强版说明
 
+## 目录
+
+- [目标与边界](#1-目标与边界)
+- [最终结构](#2-最终结构)
+- [首次启用](#3-首次启用)
+- [日常使用与修改主题](#4-日常使用与修改主题)
+- [MPE 适配](#5-mpe-适配)
+- [固定配置与外置主题的优先级](#6-固定配置与外置主题的优先级)
+- [构建、验证与 VSIX 安装](#7-构建验证与-vsix-安装)
+- [验收、回退与维护成本](#8-验收回退与维护成本)
+
 ## 1. 目标与边界
 
 本 Fork 是个人侧载用的补丁版，基于上游 `muhammad-ahmad.xlsx-viewer` v1.9.97。当前版本为 `1.9.98-local.2`，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`，因此同一个 IDE 中会替换官方扩展，不能并存。
@@ -31,7 +42,7 @@ themes/markdown-theme/
 在仓库根目录执行：
 
 ```zsh
-cd "/Users/lizhihang/Documents/Codex/2026-07-28/xian/xlsx-viewer-local-patch"
+cd "/path/to/xlsx-viewer-local-patch"
 npm ci --cache /private/tmp/xlsx-viewer-local-patch-npm-cache --no-audit --no-fund
 npm --prefix themes/markdown-theme ci --cache /private/tmp/xlsx-viewer-markdown-theme-npm-cache --no-audit --no-fund
 npm run theme:build
@@ -107,7 +118,7 @@ npm run theme:audit -- "/你的/MPE/style.less"
 ## 7. 构建、验证与 VSIX 安装
 
 ```zsh
-cd "/Users/lizhihang/Documents/Codex/2026-07-28/xian/xlsx-viewer-local-patch"
+cd "/path/to/xlsx-viewer-local-patch"
 npm run theme:build
 npm run theme:audit
 npm run check-types
@@ -115,6 +126,7 @@ npm run lint
 npm run package
 npm run verify:local-patch
 npm run verify:theme-system
+npm run verify:docs
 npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.2.vsix"
 ```
 

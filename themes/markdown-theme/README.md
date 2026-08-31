@@ -1,5 +1,11 @@
 # 统一 Markdown 主题
 
+## 目录
+
+- [常用命令](#常用命令)
+- [规则](#规则)
+- [MPE](#mpe)
+
 这里是本仓库唯一的主题源。人工只维护 `theme.less` 与 `partials/*.less`；`dist/markdown-theme.css` 由构建器生成，供 XLSX 插件与 MPE 共同加载。
 
 ## 常用命令

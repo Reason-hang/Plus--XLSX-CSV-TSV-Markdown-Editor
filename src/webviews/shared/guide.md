@@ -1,5 +1,10 @@
 # Webview 共享组件说明
 
+## 目录
+
+- [组件](#组件)
+- [Markdown 外置主题](#markdown-外置主题)
+
 本目录存放 Markdown、CSV、TSV、XLSX Webview 共用的前端组件与工具。
 
 ## 组件

@@ -1,5 +1,7 @@
 # Changelog
 
+本仓库当前文档入口已统一收录在 docs/00-文档总索引.md；关键研发与测试决策记录在 docs/AI自主决策记录文档.md。历史版本条目保留原始变更语义，不作为当前功能事实。
+
 ## v1.9.98-local.2 - 完整 Markdown 主题增强版
 
 - 新增版本化主题目录：`themes/markdown-theme`，以 `theme.less` 为唯一人工维护源，单次编译为 `markdown-theme.css`。

@@ -1,5 +1,15 @@
 # Plus XLSX, CSV, TSV & Markdown Editor
 
+## 目录
+
+- [功能概览](#功能概览)
+- [Markdown 完整主题增强](#markdown-完整主题增强)
+- [当前安装方式](#当前安装方式)
+- [开发与验证](#开发与验证)
+- [公开发布计划](#公开发布计划)
+- [贡献与反馈](#贡献与反馈)
+- [许可证与来源说明](#许可证与来源说明)
+
 这是一个面向 VS Code 系 IDE 的开源 Fork 项目，用于在编辑器内查看和编辑 XLSX、CSV、TSV 与 GitHub Flavored Markdown 文件。
 
 项目基于上游 [`muhammad-ahmad.xlsx-viewer`](https://github.com/Mahmadabid/XLSX-CSV-TSV-MARKDOWN-Editor-Vscode-Extension) 的 `v1.9.97` 源码构建。本仓库当前包含完整 Markdown 主题增强：用一份版本化 Less 主题生成单一 CSS，供本扩展与 Markdown Preview Enhanced（MPE）共同使用。
@@ -69,6 +79,8 @@
 
 ## 当前安装方式
 
+完整文档入口见 [文档总索引](docs/00-文档总索引.md)；其中包含产品、架构、迁移、开发、测试、运维和 AI 决策记录。
+
 当前分支尚未上架扩展商店，需自行构建 VSIX 后，通过 IDE 的 **Install from VSIX...** 安装。
 
 ```zsh
@@ -80,6 +92,7 @@ npm run theme:build
 npm run compile
 npm run verify:local-patch
 npm run verify:theme-system
+npm run verify:docs
 npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.2.vsix"
 ```
 
@@ -101,6 +114,7 @@ npm run theme:build
 npm run compile
 npm run verify:local-patch
 npm run verify:theme-system
+npm run verify:docs
 ```
 
 构建通过后，仍应在真实 IDE 中完成下列手工验收：
