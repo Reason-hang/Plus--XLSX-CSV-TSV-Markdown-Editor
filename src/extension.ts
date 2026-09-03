@@ -5,11 +5,13 @@ import { loadExcelWorkbook } from './spreadsheet/spreadsheetUtilities';
 import { SpreadsheetEditorProvider } from './spreadsheetEditorProvider';
 import { MDEditorProvider } from './mdEditorProvider';
 import { StyleStorageService } from './shared/styleStorageService';
+import { writeWorkbookAtomically } from './shared/atomicFile';
 import {
     convertTabularFile,
     detectTabularFileType,
     getTabularFileTypeInfo,
     getTargetTabularFileTypes,
+    readTabularFile,
     TabularFileType
 } from './shared/fileConversionService';
 
@@ -253,7 +255,7 @@ async function applyStoredStylesToXlsxFile(filePath: string, storedStyles: Recor
         applyStyleEditToCell(worksheet.getRow(address.row).getCell(address.col), styleEdit);
     }
 
-    await workbook.xlsx.writeFile(filePath);
+    await writeWorkbookAtomically(filePath, temporaryPath => workbook.xlsx.writeFile(temporaryPath));
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -548,6 +550,21 @@ export function activate(context: vscode.ExtensionContext) {
             const finalTargetUri = vscode.Uri.file(finalTargetPath);
 
             try {
+                if (sourceType === 'xlsx' && (picked.type === 'csv' || picked.type === 'tsv')) {
+                    const { workbook } = await readTabularFile(sourceFilePath, sourceType);
+                    if (workbook.sheets.length > 1) {
+                        const confirmation = await vscode.window.showWarningMessage(
+                            `${targetInfo.label} supports one worksheet. Converting will keep only the first of ${workbook.sheets.length} worksheets.`,
+                            { modal: true },
+                            'Convert First Worksheet',
+                            'Cancel'
+                        );
+                        if (confirmation !== 'Convert First Worksheet') {
+                            return;
+                        }
+                    }
+                }
+
                 const result = await convertTabularFile({
                     sourcePath: sourceFilePath,
                     targetPath: finalTargetPath,
@@ -555,18 +572,27 @@ export function activate(context: vscode.ExtensionContext) {
                     targetType: picked.type
                 });
 
+                let styleWarning = '';
                 if ((sourceType === 'csv' || sourceType === 'tsv') && result.targetType === 'xlsx') {
                     const storedStyles = await styleStorage.getStyles(sourceUri);
                     if (storedStyles) {
-                        await applyStoredStylesToXlsxFile(finalTargetPath, storedStyles);
-                        await styleStorage.clearStyles(sourceUri);
+                        try {
+                            await applyStoredStylesToXlsxFile(finalTargetPath, storedStyles);
+                            await styleStorage.clearStyles(sourceUri);
+                        } catch (error) {
+                            styleWarning = ` The file was converted, but saved styles could not be applied: ${String(error)}`;
+                        }
                     }
                 }
 
                 const message = result.droppedSheets
                     ? `Converted to ${targetInfo.label}. Only the first worksheet was kept because ${targetInfo.label} supports a single sheet.`
                     : `Converted to ${targetInfo.label}.`;
-                vscode.window.showInformationMessage(message);
+                if (styleWarning) {
+                    vscode.window.showWarningMessage(message + styleWarning);
+                } else {
+                    vscode.window.showInformationMessage(message);
+                }
 
                 const targetViewType = getViewTypeForFileType(result.targetType);
                 if (targetViewType) {

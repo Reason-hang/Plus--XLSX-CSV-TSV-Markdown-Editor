@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomBytes } from 'crypto';
 import type { IncomingMessage } from 'http';
-import { VERSION_HISTORY_RETENTION_MS, VERSION_HISTORY_SNAPSHOT_DEBOUNCE_MS, buildGroupedVersionHistoryItems, formatVersionHistoryTimestamp, getVersionHistoryFile } from './shared/versionHistory';
+import { VERSION_HISTORY_RETENTION_MS, VERSION_HISTORY_SNAPSHOT_DEBOUNCE_MS, buildGroupedVersionHistoryItems, formatVersionHistoryTimestamp, getVersionHistoryFile, limitVersionHistoryEntries } from './shared/versionHistory';
 import { MarkdownThemeService } from './shared/markdownThemeService';
+import { getFileFingerprint, writeFileAtomically } from './shared/atomicFile';
 
 export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vscode.Disposable {
     private readonly markdownThemeService = new MarkdownThemeService();
@@ -118,6 +120,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
             let previewVersionContent: string | null = null;
             let restoredVersionId: string | null = null;
             let isSaving = false;
+            let knownDocumentFingerprint: string | null = null;
 
             const getHistoryFilePath = () => {
                 return getVersionHistoryFile(this.context.globalStorageUri.fsPath, filePath, 'md');
@@ -142,7 +145,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
 
             const saveHistory = async (entries: VersionHistoryEntry[]) => {
                 await ensureHistoryDir();
-                await fs.promises.writeFile(getHistoryFilePath(), JSON.stringify(entries), 'utf8');
+                await writeFileAtomically(getHistoryFilePath(), JSON.stringify(entries));
             };
 
             const pruneHistory = async (entries?: VersionHistoryEntry[]) => {
@@ -172,7 +175,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                     charCount: content.length,
                     content
                 });
-                await saveHistory(history);
+                await saveHistory(limitVersionHistoryEntries(history));
             };
 
             const saveVersionSnapshot = (contentOverride?: string) => {
@@ -216,6 +219,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                             // Read the markdown file
                             const content = await fs.promises.readFile(filePath, 'utf-8');
                             currentContent = content;
+                            knownDocumentFingerprint = await getFileFingerprint(filePath);
                             await pruneHistory();
                             await persistVersionSnapshot(content);
 
@@ -315,6 +319,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                         try {
                             const content = await fs.promises.readFile(filePath, 'utf-8');
                             currentContent = content;
+                            knownDocumentFingerprint = await getFileFingerprint(filePath);
                             webviewPanel.webview.postMessage(buildInitMarkdownPayload(content));
                             vscode.window.showInformationMessage('Markdown reloaded from disk.');
                         } catch (err) {
@@ -327,8 +332,13 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                         try {
                             isSaving = true;
                             const text = typeof message.text === 'string' ? message.text : '';
-                            await vscode.workspace.fs.writeFile(document.uri, Buffer.from(text, 'utf8'));
+                            const currentFingerprint = await getFileFingerprint(filePath);
+                            if (knownDocumentFingerprint && currentFingerprint !== knownDocumentFingerprint) {
+                                throw new Error('The file changed outside this editor. Reload it before saving to avoid overwriting newer content.');
+                            }
+                            await writeFileAtomically(filePath, text);
                             currentContent = text;
+                            knownDocumentFingerprint = await getFileFingerprint(filePath);
                             saveVersionSnapshot(text);
                             webviewPanel.webview.postMessage({ command: 'saveResult', ok: true });
                         } catch (err) {
@@ -665,9 +675,10 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                     return;
                 }
                 try {
-                    const content = await fs.promises.readFile(filePath, 'utf-8');
-                    currentContent = content;
-                    webviewPanel.webview.postMessage(buildInitMarkdownPayload(content));
+                    const currentFingerprint = await getFileFingerprint(filePath);
+                    if (knownDocumentFingerprint && currentFingerprint !== knownDocumentFingerprint) {
+                        webviewPanel.webview.postMessage({ command: 'externalFileChanged' });
+                    }
                 } catch {
                     // ignore reload errors
                 }
@@ -700,13 +711,14 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
         const highlightUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'md', 'highlight.css'));
         const feedbackStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'shared', 'feedback.css'));
         const cspSource = webview.cspSource;
+        const nonce = randomBytes(16).toString('base64');
 
         return `
         <!DOCTYPE html>
         <html lang="en">
         <head>
             <meta charset="UTF-8">
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} https: 'unsafe-inline'; font-src ${cspSource} https:; script-src ${cspSource} 'unsafe-inline' 'unsafe-eval';">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} https: 'unsafe-inline'; font-src ${cspSource} https:; script-src ${cspSource} 'nonce-${nonce}';">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Markdown Viewer</title>
             <link href="${themeUri}" rel="stylesheet" />
@@ -714,7 +726,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
             <link href="${highlightUri}" rel="stylesheet" />
             <link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.6.0/katex.min.css" rel="stylesheet" />
             <link href="${feedbackStyleUri}" rel="stylesheet" />
-            <script>
+            <script nonce="${nonce}">
                 window.viewImgUri = "${imgUri}";
                 window.logoSvgUri = "${svgUri}";
             </script>
@@ -818,7 +830,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                     JavaScript is disabled in this webview, so the Markdown preview cannot load.
                 </div>
             </noscript>
-            <script src="${scriptUri}"></script>
+            <script nonce="${nonce}" src="${scriptUri}"></script>
         </body>
         </html>`;
     }

@@ -1,9 +1,16 @@
 import * as path from 'path';
 import { createHash } from 'crypto';
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 
 export const VERSION_HISTORY_RETENTION_MS = 48 * 60 * 60 * 1000;
-export const VERSION_HISTORY_SNAPSHOT_DEBOUNCE_MS = 1000;
+export const VERSION_HISTORY_SNAPSHOT_DEBOUNCE_MS = 30 * 1000;
+export const VERSION_HISTORY_MAX_ENTRIES = 100;
+
+export function limitVersionHistoryEntries<T>(entries: T[]): T[] {
+    return entries.length > VERSION_HISTORY_MAX_ENTRIES
+        ? entries.slice(-VERSION_HISTORY_MAX_ENTRIES)
+        : entries;
+}
 
 function getHistoryKey(filePath: string): string {
     return createHash('sha1').update(filePath).digest('hex');
@@ -71,7 +78,7 @@ export function buildGroupedVersionHistoryItems<T extends { timestamp: number }>
     const result: Array<vscode.QuickPickItem & { entry?: T }> = [];
 
     for (const [label, { items }] of sortedGroups) {
-        result.push({ label, kind: vscode.QuickPickItemKind.Separator });
+        result.push({ label, kind: -1 as vscode.QuickPickItemKind });
         for (const item of items) {
             result.push(item);
         }

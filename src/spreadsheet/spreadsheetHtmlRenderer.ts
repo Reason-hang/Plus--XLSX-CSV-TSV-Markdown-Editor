@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { randomBytes } from 'crypto';
 
 export function getWebviewContent(webviewPanel: vscode.WebviewPanel, context: vscode.ExtensionContext): string {
         const webview = webviewPanel.webview;
@@ -22,18 +23,19 @@ export function getWebviewContent(webviewPanel: vscode.WebviewPanel, context: vs
             vscode.Uri.joinPath(context.extensionUri, 'resources', 'spreadsheet', 'spreadsheet.svg')
         );
         const cspSource = webview.cspSource;
+        const nonce = randomBytes(16).toString('base64');
 
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource} 'unsafe-inline';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; script-src ${cspSource} 'nonce-${nonce}';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Spreadsheet Viewer</title>
     <link href="${themeStyleUri}" rel="stylesheet" />
     <link href="${styleUri}" rel="stylesheet" />
     <link href="${feedbackStyleUri}" rel="stylesheet" />
-    <script>
+    <script nonce="${nonce}">
         window.viewImgUri = "${imgUri}";
         window.logoSvgUri = "${svgUri}";
     </script>
@@ -59,7 +61,7 @@ export function getWebviewContent(webviewPanel: vscode.WebviewPanel, context: vs
         </div>
     </noscript>
 
-    <script src="${scriptUri}"></script>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
     }

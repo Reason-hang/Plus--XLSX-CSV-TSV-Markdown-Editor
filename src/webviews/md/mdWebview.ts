@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it';
+import DOMPurify from 'dompurify';
 // @ts-ignore
 import taskLists from 'markdown-it-task-lists';
 // @ts-ignore
@@ -705,7 +706,14 @@ function renderMarkdown(content: string) {
         const normalizedContent = sanitizeMarkdownCopyLinkArtifacts(content || '');
         const tokens = md.parse(normalizedContent, env);
         addHeadingIds(tokens);
-        preview.innerHTML = md.renderer.render(tokens, md.options, env);
+        // Markdown is an untrusted document format. Keep supported markup (including
+        // KaTeX MathML) but remove executable nodes, event handlers and unsafe URLs
+        // before writing the renderer output to the webview DOM.
+        const renderedHtml = md.renderer.render(tokens, md.options, env);
+        preview.innerHTML = DOMPurify.sanitize(renderedHtml, {
+            USE_PROFILES: { html: true, svg: true, svgFilters: true, mathMl: true },
+            FORBID_ATTR: ['style']
+        });
         if (savedScrollTop > 0 || savedScrollLeft > 0) {
             preview.scrollTop = savedScrollTop;
             preview.scrollLeft = savedScrollLeft;
@@ -1888,6 +1896,10 @@ window.addEventListener('message', (event) => {
                 showToast('Error saving');
                 shouldExitEditMode = false;
             }
+            break;
+
+        case 'externalFileChanged':
+            showToast('File changed outside this editor. Reload before saving.');
             break;
 
         case 'versionHistoryError':

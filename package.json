@@ -405,7 +405,9 @@
         "theme:audit": "npm --prefix themes/markdown-theme run audit",
         "verify:theme-system": "node scripts/verify-theme-system.mjs",
         "verify:docs": "node scripts/verify-docs.mjs",
-        "test": "vscode-test"
+        "test": "npm run test:unit",
+        "test:unit": "npm run compile-tests && mocha \"out/test/**/*.test.js\"",
+        "test:extension": "npm run compile-tests && node out/test/runTest.js"
     },
     "devDependencies": {
         "@types/mocha": "^8.2.2",
@@ -425,11 +427,13 @@
         "@types/highlight.js": "^9.12.4",
         "@types/markdown-it": "^14.1.2",
         "@types/markdown-it-container": "^2.0.11",
+        "dompurify": "3.4.14",
         "exceljs": "^4.3.0",
         "highlight.js": "^11.11.1",
         "jspdf": "^4.2.1",
         "jszip": "^3.10.1",
         "katex": "^0.16.45",
+        "linkify-it": "5.0.2",
         "markdown-it": "^14.1.0",
         "markdown-it-abbr": "^2.0.0",
         "markdown-it-container": "^4.0.0",
@@ -442,7 +446,7 @@
         "markdown-it-sub": "^2.0.0",
         "markdown-it-sup": "^2.0.0",
         "markdown-it-task-lists": "^2.1.1",
-        "mermaid": "^11.4.0",
+        "mermaid": "11.16.1",
         "turndown": "^7.2.2",
         "turndown-plugin-gfm": "^1.0.2"
     },

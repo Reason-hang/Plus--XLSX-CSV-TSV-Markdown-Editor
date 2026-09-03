@@ -1,20 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as Excel from 'exceljs';
-import * as vscode from 'vscode';
 import { loadExcelWorkbook } from '../spreadsheet/spreadsheetUtilities';
-
-let csvSeparatorOverride: string | undefined = undefined;
-
-export function setCsvSeparatorOverride(separator: string | undefined): void {
-    csvSeparatorOverride = separator;
-}
+import { writeFileAtomically, writeWorkbookAtomically } from './atomicFile';
 
 function getCsvDelimiter(): string {
-    if (csvSeparatorOverride) {
-        return csvSeparatorOverride;
-    }
     try {
+        // Keep the converter usable by CLI/unit-test callers that do not have the
+        // VS Code extension-host module available.
+        const vscode = require('vscode') as typeof import('vscode');
         const config = vscode.workspace.getConfiguration('xlsxViewer');
         return config.get<string>('csv.separator', ',');
     } catch {
@@ -48,6 +42,7 @@ const convertersByExtension = new Map<string, TabularFileType>();
 let builtInConvertersRegistered = false;
 
 const BUILT_IN_TYPES = ['csv', 'tsv', 'xlsx'];
+const MAX_WORKBOOK_GRID_CELLS = 1_000_000;
 
 function normalizeExtension(extension: string): string {
     const trimmed = extension.trim().toLowerCase();
@@ -234,7 +229,7 @@ function createDelimitedConverter(type: string, label: string, defaultDelimiter:
         label,
         extension: type,
         async read(filePath: string): Promise<TabularWorkbookData> {
-            const content = await fs.promises.readFile(filePath, 'utf8');
+            const content = (await fs.promises.readFile(filePath, 'utf8')).replace(/^\uFEFF/, '');
             let delimiter = defaultDelimiter;
             if (type === 'csv') {
                 delimiter = getCsvDelimiter();
@@ -254,7 +249,7 @@ function createDelimitedConverter(type: string, label: string, defaultDelimiter:
                 delimiter = getCsvDelimiter();
             }
             const content = serializeDelimitedRows(rows, delimiter);
-            await fs.promises.writeFile(filePath, content, 'utf8');
+            await writeFileAtomically(filePath, content);
         }
     };
 }
@@ -278,6 +273,10 @@ function createXlsxConverter(): TabularFileConverter {
                         maxCol = Math.max(maxCol, colNumber);
                     });
                 });
+
+                if (maxRow * maxCol > MAX_WORKBOOK_GRID_CELLS) {
+                    throw new Error(`Worksheet "${worksheet.name}" has a ${maxRow} × ${maxCol} grid, which exceeds the ${MAX_WORKBOOK_GRID_CELLS.toLocaleString()} cell safety limit.`);
+                }
 
                 const rows: string[][] = [];
                 for (let rowNumber = 1; rowNumber <= maxRow; rowNumber++) {
@@ -314,7 +313,7 @@ function createXlsxConverter(): TabularFileConverter {
                 }
             }
 
-            await workbook.xlsx.writeFile(filePath);
+            await writeWorkbookAtomically(filePath, temporaryPath => workbook.xlsx.writeFile(temporaryPath));
         }
     };
 }

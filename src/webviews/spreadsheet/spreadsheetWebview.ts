@@ -7711,6 +7711,11 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
             return;
         }
 
+        if (message.command === 'externalFileChanged') {
+            showToast('File changed outside this editor. Reload before saving.');
+            return;
+        }
+
         if (message.command === 'versionHistoryError') {
             showToast(message.message || 'Version history failed');
             return;

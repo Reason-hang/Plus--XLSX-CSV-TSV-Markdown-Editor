@@ -217,7 +217,7 @@ export function renderDropdownCellContent(options: DropdownCellContentOptions): 
         + '</span>';
 }
 
-function renderCellContent(cellData: any, isPlainView: boolean, allowInteractiveControls: boolean, isEditMode: boolean): string {
+export function renderCellContent(cellData: any, isPlainView: boolean, allowInteractiveControls: boolean, isEditMode: boolean): string {
     const cellType = toCellType(cellData);
     const cellDisplayValue = toCellDisplayValue(cellData);
 
@@ -277,7 +277,7 @@ function renderCellContent(cellData: any, isPlainView: boolean, allowInteractive
         const safeSrc = escapeAttribute(src);
         const fallbackText = cellDisplayValue ? '<span class="cell-image-label">' + escapeHtml(cellDisplayValue) + '</span>' : '';
         if (!safeSrc) {
-            return '<span class="cell-content">' + (cellDisplayValue || '&nbsp;') + '</span>';
+            return '<span class="cell-content">' + (cellDisplayValue ? escapeHtml(cellDisplayValue) : '&nbsp;') + '</span>';
         }
 
         return '<span class="cell-content cell-image-content">'
@@ -286,8 +286,8 @@ function renderCellContent(cellData: any, isPlainView: boolean, allowInteractive
             + '</span>';
     }
 
-    const text = cellData?.value || '&nbsp;';
-    return '<span class="cell-content">' + text + '</span>';
+    const text = cellDisplayValue || '&nbsp;';
+    return '<span class="cell-content">' + (text === '&nbsp;' ? text : escapeHtml(text)) + '</span>';
 }
 
 function toPlainCellContent(value: unknown): string {

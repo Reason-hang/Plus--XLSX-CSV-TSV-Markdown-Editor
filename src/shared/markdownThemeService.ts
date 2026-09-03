@@ -35,6 +35,9 @@ function validateThemeCss(css: string): void {
     if (/url\s*\(\s*["']?\s*(?:https?:|\/\/|data:|javascript:)/i.test(css)) {
         throw new Error('主题 CSS 不允许加载远程、data 或 javascript 资源。');
     }
+    if (/url\s*\(\s*var\s*\(/i.test(css)) {
+        throw new Error('主题 CSS 的 url() 不允许使用 var() 间接引用资源。');
+    }
     if (/(^|,)\s*(?:html|body)\b/im.test(css)) {
         throw new Error('主题 CSS 不能使用 html 或 body 全局选择器；请限定在 .markdown-preview、.toc-panel 或 .md-sidebar-toc。');
     }
