@@ -12,6 +12,8 @@ const requiredFiles = [
   'docs/05-测试与验收/测试与验收清单.md',
   'docs/05-测试与验收/代码审计报告-2026-08-31.md',
   'docs/06-运维与部署/安装与回退说明.md',
+  'docs/07-版本与发布/版本记录表.md',
+  'docs/07-版本与发布/版本记录表模板.md',
   'docs/AI自主决策记录文档.md'
 ];
 const ignoredDirectories = new Set(['.git', 'node_modules', 'out']);
@@ -81,6 +83,16 @@ for (const relativeFile of requiredFiles.slice(1)) {
   const normalized = relativeFile.replaceAll(path.sep, '/');
   if (!indexSource.includes(normalized) && !indexSource.includes(path.basename(normalized))) {
     failures.push('总索引未登记文档：' + relativeFile);
+  }
+}
+
+const versionRecordSource = readFileSync(
+  path.join(repositoryRoot, 'docs/07-版本与发布/版本记录表.md'),
+  'utf8'
+);
+for (const field of ['本次最重要变化', '受影响功能', '数据与文件影响', '提交 SHA']) {
+  if (!versionRecordSource.includes(field)) {
+    failures.push('版本记录表缺少必填字段：' + field);
   }
 }
 
