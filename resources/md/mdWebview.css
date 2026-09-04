@@ -8,10 +8,6 @@
     --xlsx-viewer-md-mark-font-weight: inherit;
     --xlsx-viewer-md-mark-padding: 0 2px;
     --xlsx-viewer-md-mark-border-radius: 2px;
-    --xlsx-viewer-md-preview-background: var(--bg-color);
-    --xlsx-viewer-md-preview-color: var(--text-color);
-    --xlsx-viewer-md-preview-font-size: inherit;
-    --xlsx-viewer-md-preview-line-height: inherit;
 }
 
 body {
@@ -514,10 +510,10 @@ body.resizing * {
     padding: 32px;
     overflow-y: auto;
     max-width: 100%;
-    color: var(--xlsx-viewer-md-preview-color);
-    background: var(--xlsx-viewer-md-preview-background);
-    font-size: var(--xlsx-viewer-md-preview-font-size);
-    line-height: var(--xlsx-viewer-md-preview-line-height);
+    color: var(--xlsx-viewer-md-preview-color, var(--text-color));
+    background: var(--xlsx-viewer-md-preview-background, var(--bg-color));
+    font-size: var(--xlsx-viewer-md-preview-font-size, inherit);
+    line-height: var(--xlsx-viewer-md-preview-line-height, inherit);
 }
 
 .markdown-preview.hidden {
@@ -780,12 +776,15 @@ body.show-line-numbers .markdown-preview pre {
     font-size: 13px;
     overflow: auto;
     display: block;
+    background: var(--bg-color);
+    color: var(--text-color);
 }
 
 .markdown-preview table.md-table th,
 .markdown-preview table.md-table td {
     padding: 6px 13px;
     border: 1px solid var(--border-color);
+    color: var(--text-color);
 }
 
 body.preview-edit-mode .markdown-preview table.md-table th,
@@ -799,8 +798,12 @@ body.preview-edit-mode .markdown-preview table.md-table td {
     font-weight: 600;
 }
 
-.markdown-preview table.md-table tr:nth-child(2n) {
-    background: var(--header-bg);
+.markdown-preview table.md-table td {
+    background: var(--bg-color);
+}
+
+.markdown-preview table.md-table tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--bg-color) 94%, var(--text-color) 6%);
 }
 
 /* Hover controls under editable tables (preview-edit mode only) */

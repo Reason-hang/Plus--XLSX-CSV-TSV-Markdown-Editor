@@ -13,7 +13,7 @@
 
 ## 1. 目标与边界
 
-本 Fork 是个人侧载用的补丁版，基于上游 `muhammad-ahmad.xlsx-viewer` v1.9.97。当前版本为 `1.9.98-local.4`，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`，因此同一个 IDE 中会替换官方扩展，不能并存。
+本 Fork 是个人侧载用的补丁版，基于上游 `muhammad-ahmad.xlsx-viewer` v1.9.97。当前版本为 `1.9.98-local.6`，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`，因此同一个 IDE 中会替换官方扩展，不能并存。
 
 本次完整增强版的目标是：只维护一份 Less 主题源码，生成一份 CSS，同时供本扩展和 Markdown Preview Enhanced（MPE）使用；Markdown 正文只写语义明确的 `<mark>重点</mark>`，不再为每篇文档插入 `<style>` 或冗长的 `<span style="...">`。
 
@@ -70,6 +70,8 @@ Markdown 正文只写：
 普通文字，<mark>这是橙色重点</mark>，后面继续是普通文字。
 ```
 
+选中文字后按 `⌘ Command + ⌥ Option + ⇧ Shift + 3`（Windows/Linux：`Ctrl + Alt + Shift + 3`），原生编辑器和 `Split Edit` 左侧编辑区都会写入同样的 `<mark>选中文本</mark>`；右侧预览实时显示橙色高亮。
+
 日常改主题时只编辑 `themes/markdown-theme/theme.less` 或 `partials/*.less`，然后任选一种方式：
 
 ```zsh
@@ -111,7 +113,7 @@ npm run theme:audit -- "/你的/MPE/style.less"
 1. 扩展内置样式：最低优先级。
 2. 旧的 `xlsxViewer.md.mark*`、`preview*` 固定配置：用于不启用外置主题的轻量场景。
 3. 外置 `markdown-theme.css`：启用后最后注入，覆盖同一选择器。
-4. Markdown 正文内 `<style>`：仍可能覆盖预览，但不推荐继续使用。
+4. Markdown 正文内 `<style>`：不是受支持的主题入口，安全渲染可能净化其中的样式；不要依赖它覆盖预览。
 
 推荐统一使用外置主题，不要同时把同一属性写在固定设置、主题 CSS 与单篇 `<style>` 中。
 
@@ -127,7 +129,7 @@ npm run package
 npm run verify:local-patch
 npm run verify:theme-system
 npm run verify:docs
-npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.4.vsix"
+npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.6.vsix"
 ```
 
 通过 IDE 的 `Extensions: Install from VSIX...` 安装；不要直接把解压目录复制到 `~/.vscode/extensions`、`~/.cursor/extensions` 或 `~/.antigravity/extensions`。安装后关闭该扩展的自动更新，避免被官方版本覆盖。

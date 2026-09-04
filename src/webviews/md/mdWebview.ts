@@ -169,6 +169,14 @@ function cssValueOrFallback(value: unknown, fallback: string): string {
     return typeof value === 'string' && value.trim() ? value.trim() : fallback;
 }
 
+function setOptionalCssValue(style: CSSStyleDeclaration, property: string, value: unknown): void {
+    if (typeof value === 'string' && value.trim()) {
+        style.setProperty(property, value.trim());
+    } else {
+        style.removeProperty(property);
+    }
+}
+
 function applyMarkdownAppearance(appearance?: MarkdownAppearanceSettings): void {
     const rootStyle = document.documentElement.style;
     rootStyle.setProperty('--xlsx-viewer-md-mark-background', cssValueOrFallback(appearance?.markBackgroundColor, '#FF4E00'));
@@ -176,10 +184,10 @@ function applyMarkdownAppearance(appearance?: MarkdownAppearanceSettings): void 
     rootStyle.setProperty('--xlsx-viewer-md-mark-font-weight', cssValueOrFallback(appearance?.markFontWeight, 'inherit'));
     rootStyle.setProperty('--xlsx-viewer-md-mark-padding', cssValueOrFallback(appearance?.markPadding, '0 2px'));
     rootStyle.setProperty('--xlsx-viewer-md-mark-border-radius', cssValueOrFallback(appearance?.markBorderRadius, '2px'));
-    rootStyle.setProperty('--xlsx-viewer-md-preview-background', cssValueOrFallback(appearance?.previewBackgroundColor, 'var(--bg-color)'));
-    rootStyle.setProperty('--xlsx-viewer-md-preview-color', cssValueOrFallback(appearance?.previewTextColor, 'var(--text-color)'));
-    rootStyle.setProperty('--xlsx-viewer-md-preview-font-size', cssValueOrFallback(appearance?.previewFontSize, 'inherit'));
-    rootStyle.setProperty('--xlsx-viewer-md-preview-line-height', cssValueOrFallback(appearance?.previewLineHeight, 'inherit'));
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-background', appearance?.previewBackgroundColor);
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-color', appearance?.previewTextColor);
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-font-size', appearance?.previewFontSize);
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-line-height', appearance?.previewLineHeight);
 }
 
 function applyExternalMarkdownTheme(theme?: MarkdownThemePayload): void {
@@ -2603,6 +2611,7 @@ function applyFormat(action: string) {
     pushUndoState(editor);
     switch (action) {
         case 'bold': wrapSelection(editor, '**', '**'); break;
+        case 'highlight': wrapSelection(editor, '<mark>', '</mark>'); break;
         case 'italic': wrapSelection(editor, '*', '*'); break;
         case 'strikethrough': wrapSelection(editor, '~~', '~~'); break;
         case 'inlineCode': wrapSelection(editor, '`', '`'); break;
@@ -3474,6 +3483,16 @@ function wireEditor() {
                 editor.selectionStart = editor.selectionEnd = start + insertion.length;
                 onEditorInput();
             }
+            return;
+        }
+
+        if (isMod && e.altKey && e.shiftKey && e.code === 'Digit3') {
+            e.preventDefault();
+            if (editor.selectionStart === editor.selectionEnd) {
+                return;
+            }
+            pushUndoState(editor);
+            applyFormat('highlight');
             return;
         }
 

@@ -2,6 +2,18 @@
 
 本仓库当前文档入口已统一收录在 docs/00-文档总索引.md；关键研发与测试决策记录在 docs/AI自主决策记录文档.md。历史版本条目保留原始变更语义，不作为当前功能事实。
 
+## v1.9.98-local.6 - Markdown 重点高亮快捷键
+
+- 新增默认快捷键：macOS 为 `⌘ Command + ⌥ Option + ⇧ Shift + 3`，Windows/Linux 为 `Ctrl + Alt + Shift + 3`。
+- 原生 Markdown 编辑器和插件的 `Split Edit` 左侧编辑区均会将选中文本包裹为标准、可保存的 `<mark>选中文本</mark>`。
+- 右侧预览沿用全局 `<mark>` 配置，实时显示橙色重点高亮；不再写入会被安全策略净化的内联 `style`。
+
+## v1.9.98-local.5 - 深色 Markdown 预览修复
+
+- 修复未显式配置预览颜色时，Markdown 预览错误使用根节点浅色变量、未跟随 IDE 深色主题的问题。
+- Markdown 表格表头、单元格文字现在始终继承当前主题前景色；表格正文使用深浅交替行，提高深色主题下的可读性。
+- 保持用户显式预览配色和外置 Markdown 主题的覆盖优先级不变。
+
 ## v1.9.98-local.2 - 完整 Markdown 主题增强版
 
 - 新增版本化主题目录：`themes/markdown-theme`，以 `theme.less` 为唯一人工维护源，单次编译为 `markdown-theme.css`。
