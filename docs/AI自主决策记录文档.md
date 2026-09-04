@@ -24,7 +24,7 @@
 | --- | --- |
 | 仓库 | 当前工作区对应的 Plus XLSX, CSV, TSV & Markdown Editor Fork |
 | 分支 | codex/local-markdown-appearance |
-| 当前版本 | 1.9.98-local.3 |
+| 当前版本 | 1.9.98-local.6 |
 | 远端发布目标 | personal/main |
 | 主题实现 | 已有外置 CSS、manifest、监听、回退和 MPE 适配基础 |
 | 真实 IDE 验收 | 本次不自动安装，需人工执行 |
@@ -35,7 +35,7 @@
 
 - 风险等级：中
 - 背景：历史对话和旧交付物中存在不同版本、不同主题方案和不同路径描述。
-- 证据：当前 package.json 版本为 1.9.98-local.3；src/shared/markdownThemeService.ts 已包含外置 CSS 加载、路径校验、manifest 提示、监听和失败回退；本次审计修复还增加了渲染净化、保存一致性校验和原子写入。
+- 证据：当前 package.json 版本为 1.9.98-local.6；src/shared/markdownThemeService.ts 已包含外置 CSS 加载、路径校验、manifest 提示、监听和失败回退；本次审计修复还增加了渲染净化、保存一致性校验和原子写入。
 - 候选方案：直接沿用旧文档；以当前工作区重新核对；只整理用户提供的方案文本。
 - 决策：以当前工作区源码、package.json、生成物、测试命令和 Git 现场为准；旧描述只有在当前代码仍支持时才保留。
 - 执行范围：所有 README、docs、主题说明和测试说明。
