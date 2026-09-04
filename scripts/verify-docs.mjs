@@ -96,6 +96,32 @@ for (const field of ['本次最重要变化', '受影响功能', '数据与文�
   }
 }
 
+const versionRecordTemplateSource = readFileSync(
+  path.join(repositoryRoot, 'docs/07-版本与发布/版本记录表模板.md'),
+  'utf8'
+);
+for (const field of [
+  'versionName',
+  'versionCode / 构建号',
+  '版本发布日期',
+  '上一版本',
+  '基线提交',
+  '功能代码基线 SHA',
+  '构建来源 SHA',
+  '版本交付提交 SHA',
+  '文档提交 SHA',
+  '回滚/恢复提交 SHA',
+  '版本目标与用户价值',
+  '生命周期',
+  '质量门禁',
+  '发布状态',
+  '兼容与回滚'
+]) {
+  if (!versionRecordTemplateSource.includes(field)) {
+    failures.push('版本记录表模板缺少必填字段：' + field);
+  }
+}
+
 if (failures.length) {
   console.error('文档规范验证：FAIL');
   for (const failure of failures) {
