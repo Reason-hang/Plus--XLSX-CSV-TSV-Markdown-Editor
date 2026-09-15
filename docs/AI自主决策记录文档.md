@@ -260,7 +260,8 @@
 5. 已通过类型、编译、安全、本地补丁、主题和文档验证；`npm audit --json --package-lock-only` 为 0 项漏洞；生产构建和 VSIX 验包通过。
 6. 已生成 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix`，119 files、2.96 MB，SHA-256 为 `e3357cbcbc19cd8dbfbc87b8365e9704bae2f728d70fef48802ae80bd3cf6010`；包内已核对本地 KaTeX CSS/字体、`.10` manifest 和 `headingColor` 默认值，包内文档不自引用自身哈希。
 7. `npm test` 的测试源编译和 CLI 配置通过，但 macOS Extension Host 仍以 SIGABRT 终止；Docker arm64 干净安装 615 个包且审计为 0 项，但本轮 Linux VS Code 运行时下载未进入测试进程，不能记为 Extension Host 通过。
-8. 三个 IDE 的安装、窗口重载和真实交互验收仍需现场记录；GitHub 实时 `personal/main` 指针仍因 DNS 无法解析而未核实。
+8. 已将最终 `.10` VSIX 安装到 VS Code、Cursor、Antigravity IDE，三个 CLI 均核对为 `muhammad-ahmad.xlsx-viewer@1.9.98-local.10`；窗口重载和真实交互验收仍需现场记录。
+9. 代码、资源和审计修复提交为 `6d2d44dbe5c7308ba6d4edd170b43530f1ec4991`；版本台账证据回填提交待本节文档变更提交后补入。GitHub 实时 `personal/main` 指针仍因 DNS 无法解析而未核实。
 
 ### 2026-09-15：`.7` 代码审计、`.8` 修复与 Docker 验收
 
