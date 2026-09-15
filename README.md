@@ -17,8 +17,8 @@
 
 项目以原作者仓库的 `v1.9.98`（提交 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4`）作为当前集成基线，并在此基础上保留本地安全修复和 Markdown 主题增强；`v1.9.97` 仍作为历史功能对比基线。主题增强用一份版本化 Less 主题生成单一 CSS，供本扩展与 Markdown Preview Enhanced（MPE）共同使用。
 
-> 安全提示：当前锁文件在线审计结果为 6 项漏洞（2 low、3 moderate、1 high、0 critical）；运行时公式渲染已移除无修复的 `markdown-it-katex`，当前 high 项来自测试工具链。个人使用应优先打开可信 Markdown，公开发布前必须完成依赖处置。
-> 当前版本是本地开发补丁 `1.9.98-local.7`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
+> 安全提示：`1.9.98-local.8` 的锁文件在线审计结果为 0 项漏洞（0 low、0 moderate、0 high、0 critical）；运行时公式渲染继续使用 `katex` 且 `trust: false`。外部 KaTeX CSS CDN、绝对路径图片和 Webview 大批量消息仍属于受控残余风险，详见代码审计报告。
+> 当前版本是本地开发补丁 `1.9.98-local.8`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
 
 ## 功能概览
 
@@ -82,7 +82,7 @@
 
 完整的主题结构、MPE 适配、迁移审计、安装、回退、构建与验证边界，请阅读：[完整增强版说明](README-LOCAL-PATCH.md) 和 [主题目录说明](themes/markdown-theme/README.md)。
 
-安全审计与修复证据见：[代码审计报告](docs/05-测试与验收/代码审计报告-2026-08-31.md)。
+安全审计与修复证据见：[代码审计报告](docs/05-测试与验收/代码审计报告-2026-09-15-v1.9.98-local.7.md)。
 
 ## 重点高亮写法
 
@@ -110,7 +110,7 @@
 
 ### Markdown 左右视图字号配置
 
-`1.9.98-local.7` 支持分别配置 `Split Edit` 左侧编辑区和右侧预览区的字号、行高。在 IDE 的 `Preferences: Open User Settings (JSON)` 中加入：
+`1.9.98-local.8` 支持分别配置 `Split Edit` 左侧编辑区和右侧预览区的字号、行高。在 IDE 的 `Preferences: Open User Settings (JSON)` 中加入：
 
 ```json
 {
@@ -127,7 +127,7 @@
 
 ## 相对上游 v1.9.97 的增强
 
-当前本地包为 `1.9.98-local.7`；集成基线为上游 `v1.9.98`（`fd6ed727`），功能差异仍以历史上游 `v1.9.97`（`cb1c765`）作为完整对照，XLSX、CSV、TSV 原有编辑能力保持不变，新增与修复如下：
+当前本地包为 `1.9.98-local.8`；集成基线为上游 `v1.9.98`（`fd6ed727`），功能差异仍以历史上游 `v1.9.97`（`cb1c765`）作为完整对照，XLSX、CSV、TSV 原有编辑能力保持不变，新增与修复如下：
 
 | 模块 | 新增或修改 | 实际作用 |
 | --- | --- | --- |
@@ -140,6 +140,7 @@
 | 保存与冲突 | 原子保存、外部修改指纹检测、历史最多 200 条/50 MiB | 降低写入损坏和旧窗口覆盖新文件的风险 |
 | 表格与转换 | CSV BOM 清理、超大或稀疏 XLSX 保护、多 Sheet 转 CSV/TSV 前确认 | 改善兼容性，避免卡死或无感知丢失工作表 |
 | 验证 | 新增主题、安全、保存、BOM、历史上限回归检查 | 后续维护可更早发现回归 |
+| 审计修复 | 移除 Markdown CSP 中无必要的 `unsafe-eval`；锁文件覆盖 `diff`、`serialize-javascript`、ExcelJS 使用的 `uuid` | 降低 Webview 脚本执行面，依赖在线审计为 0 |
 
 ## 版本记录表
 
@@ -163,14 +164,14 @@ npm run verify:local-patch
 npm run verify:theme-system
 npm run verify:docs
 npm test  # 首次运行会下载对应 VS Code Extension Host
-npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.7.vsix"
+npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.8.vsix"
 ```
 
-手动安装或将旧版本替换为 `.7`：
+手动安装或将旧版本替换为 `.8`：
 
-1. 下载或选择 `muhammad-ahmad.xlsx-viewer-1.9.98-local.7.vsix`。
+1. 下载或选择 `muhammad-ahmad.xlsx-viewer-1.9.98-local.8.vsix`。
 2. 在 VS Code、Cursor 或 Antigravity 按 `⌘ Command + ⇧ Shift + P`，执行 `Extensions: Install from VSIX...`。
-3. 选择该 VSIX；出现升级提示时确认。扩展 ID 相同且 `.7` 版本更高，无需先卸载旧版本。
+3. 选择该 VSIX；出现升级提示时确认。扩展 ID 相同且 `.8` 版本更高，无需先卸载旧版本。
 4. 再按 `⌘ Command + ⇧ Shift + P`，执行 `Developer: Reload Window`。
 5. 关闭并重新打开 Markdown 文件，点击 `Split Edit`，确认右侧预览与表格样式。
 

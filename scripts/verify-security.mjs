@@ -87,6 +87,7 @@ assert.doesNotMatch(dangerousMathHtml, /<a\b[^>]*javascript:/i, 'KaTeX must not 
 assert.match(mdWebviewSource, /function sanitizeRenderedMarkdownHtml/);
 assert.match(mdWebviewSource, /preview\.innerHTML = sanitizeRenderedMarkdownHtml/);
 assert.doesNotMatch(mdProviderSource, /script-src [^;]*'unsafe-inline'/);
+assert.doesNotMatch(mdProviderSource, /script-src [^;]*'unsafe-eval'/);
 assert.doesNotMatch(spreadsheetShellSource, /script-src [^;]*'unsafe-inline'/);
 assert.match(mdProviderSource, /write(Buffer|Text)FileAtomically/);
 assert.match(mdProviderSource, /function sanitizeAppearanceValue/);

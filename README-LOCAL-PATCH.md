@@ -13,9 +13,9 @@
 
 ## 1. 目标与边界
 
-本 Fork 是个人侧载用的补丁版，当前以原作者仓库 `v1.9.98`（提交 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4`）作为集成基线；`v1.9.97` 仅作为历史对照基线。当前版本为 `1.9.98-local.7`，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`，因此同一个 IDE 中会替换官方扩展，不能并存。
+本 Fork 是个人侧载用的补丁版，当前以原作者仓库 `v1.9.98`（提交 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4`）作为集成基线；`v1.9.97` 仅作为历史对照基线。当前版本为 `1.9.98-local.8`，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`，因此同一个 IDE 中会替换官方扩展，不能并存。
 
-当前锁文件在线审计结果为 6 项漏洞（2 low、3 moderate、1 high、0 critical）。运行时公式渲染已改为直接使用 `katex`，移除了无自动修复的 `markdown-it-katex`；本版本已完成代码级净化和不带 `--force` 的传递依赖锁文件修复，但测试工具链的审计残余仍未全部关闭。测试 CLI 依赖为开发期工具，不进入 VSIX 运行时。
+`1.9.98-local.8` 锁文件在线审计结果为 0 项漏洞（0 low、0 moderate、0 high、0 critical）。运行时公式渲染继续直接使用 `katex`，移除了无自动修复的 `markdown-it-katex`；本版本同时移除 Markdown CSP 中无必要的 `unsafe-eval`，并以根级 overrides 升级开发链 `diff`、`serialize-javascript` 及 ExcelJS 使用的 `uuid`。测试 CLI 依赖为开发期工具，不进入 VSIX 运行时。外部 KaTeX CSS CDN、绝对路径图片和 Webview 大批量消息仍在审计报告中作为残余风险跟踪。
 
 本次完整增强版的目标是：只维护一份 Less 主题源码，生成一份 CSS，同时供本扩展和 Markdown Preview Enhanced（MPE）使用；Markdown 正文只写语义明确的 `<mark>重点</mark>`，不再为每篇文档插入 `<style>` 或冗长的 `<span style="...">`。本版本同时收敛外部输入净化、保存前一致性校验、原子写入和版本历史上限。
 
@@ -148,7 +148,7 @@ npm run verify:local-patch
 npm run verify:theme-system
 npm run verify:docs
 npm test  # 首次运行会下载对应 VS Code Extension Host
-npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.7.vsix"
+npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.8.vsix"
 ```
 
 通过 IDE 的 `Extensions: Install from VSIX...` 安装；不要直接把解压目录复制到 `~/.vscode/extensions`、`~/.cursor/extensions` 或 `~/.antigravity/extensions`。安装后关闭该扩展的自动更新，避免被官方版本覆盖。

@@ -23,10 +23,10 @@
 | 项目 | 事实 |
 | --- | --- |
 | 仓库 | 当前工作区对应的 Plus XLSX, CSV, TSV & Markdown Editor Fork |
-| 分支 | codex/release-1.9.98-local.7（待合并推送到 `personal/main`） |
+| 分支 | codex/release-1.9.98-local.7（本地修复工作分支，待以新提交推送到 `personal/main`） |
 | 上游集成基线 | v1.9.98，`fd6ed727bf241f6fd2c1380a609e7c728e108ee4` |
 | 历史对比基线 | v1.9.97，`cb1c765c0da95d49ecd50ec3b0e26ca7ca185ebb` |
-| 当前版本 | 1.9.98-local.7 |
+| 当前版本 | 1.9.98-local.8 |
 | 远端发布目标 | personal/main |
 | 主题实现 | 已有外置 CSS、manifest、监听、回退和 MPE 适配基础 |
 | 真实 IDE 验收 | 本次不自动安装，需人工执行 |
@@ -37,7 +37,7 @@
 
 - 风险等级：中
 - 背景：历史对话和旧交付物中存在不同版本、不同主题方案和不同路径描述。
-- 证据：当前 package.json 版本已升级为 1.9.98-local.7；src/shared/markdownThemeService.ts 已包含外置 CSS 加载、路径校验、manifest 提示、监听和失败回退；审计修复还增加了渲染净化、保存一致性校验和原子写入。
+- 证据：当前 package.json 版本已升级为 1.9.98-local.8；src/shared/markdownThemeService.ts 已包含外置 CSS 加载、路径校验、manifest 提示、监听和失败回退；审计修复还增加了渲染净化、保存一致性校验、原子写入和依赖覆盖。
 - 候选方案：直接沿用旧文档；以当前工作区重新核对；只整理用户提供的方案文本。
 - 决策：以当前工作区源码、package.json、生成物、测试命令和 Git 现场为准；旧描述只有在当前代码仍支持时才保留。
 - 执行范围：所有 README、docs、主题说明和测试说明。
@@ -215,7 +215,28 @@
 - 验证方式：设置默认值断言、受控 CSS 值校验、面板字段源码检查、类型/Lint/构建、安全回归和文档门禁；真实界面持久化需在三 IDE 现场记录。
 - 残余风险：用户输入的 CSS 值仍需遵守文档中的合法值约束；未来新增字段不能绕过同一校验链路。
 
+### D-019：对 `.7` 进行代码审计后升级为 `.8`，优先关闭可验证的安全与测试门禁问题
+
+- 风险等级：中高
+- 背景：`.7` 审计时发现 Markdown CSP 仍声明无实际用途的 `unsafe-eval`，锁文件有 6 项在线依赖告警（2 low、3 moderate、1 high），且宿主 macOS 的 VS Code Extension Host 以 `SIGABRT` 退出，无法证明测试结果。
+- 候选方案：使用 `npm audit fix --force`；只在 README 中豁免告警；或用兼容的根级 overrides 修复依赖、收紧 CSP，并在 Docker + Xvfb 中复跑真实 Extension Host。
+- 决策：采用第三种方案，版本升级为 `1.9.98-local.8`。覆盖 `diff`、`serialize-javascript` 和 ExcelJS 使用的 `uuid`，不降级 ExcelJS；删除 `unsafe-eval`；将 VS Code 测试 CLI 显式切换为 Mocha BDD，并加入 headless 启动参数。
+- 原因：高危依赖来自开发/构建链，必须消除而不能以“VSIX 不包含它”代替；`--force` 可能破坏 ExcelJS 和测试链路；Docker 可提供可重复的 Extension Host 证据，但不能冒充三个本地 IDE 的人工验收。
+- 执行范围：package.json、package-lock.json、src/mdEditorProvider.ts、scripts/verify-security.mjs、.vscode-test.mjs、README/CHANGELOG/版本记录和本审计报告。
+- 验证方式：干净依赖安装后 `npm audit` 为 0；Node 24 + Linux arm64 + Xvfb 中 Extension Host 4 项测试通过；类型检查、构建、安全、主题、文档和 VSIX 验包继续执行。
+- 偏差：宿主 macOS 直接运行下载的 Code 仍以 134/SIGABRT 中止，因此本机 Extension Host 仍标记为环境限制；Docker 运行已证明测试代码和扩展 Host 可以正常启动。
+- 残余风险：外部 KaTeX CSS CDN、绝对路径图片和 Webview 大批量消息的边界治理未纳入 `.8` 的行为改造，已在审计报告中列为 P2 后续事项。
+
 ## 执行与验证记录
+
+### 2026-09-15：`.7` 代码审计、`.8` 修复与 Docker 验收
+
+1. 以 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.7.vsix`（SHA-256 `4aa6e05167154f07fccb1645b90c0f9ddd36b2c837c891c26c0399be067045f9`）及其源代码提交 `dfe100d6ce21cb3d6321d1d54a2217e461520172` 为初始审计对象。
+2. 复核发现 `.7` 锁文件为 6 项在线告警；通过根级 overrides 生成新锁文件后，干净临时副本 `npm audit --package-lock-only` 和 `npm audit --omit=dev` 均为 0 项。
+3. 移除 Markdown CSP 中的 `unsafe-eval`，并加入 `verify:security` 回归断言。
+4. 修正 `.vscode-test.mjs` 的 Mocha UI 与 headless 启动参数；Docker Node 24 + Linux arm64 + Xvfb 中 Extension Host 测试 4 项通过。
+5. 宿主 macOS 直接启动同版本 Code 仍以 SIGABRT/134 退出，记录为本机环境限制；没有将该限制写成代码测试失败或“已在宿主通过”。
+6. 当前修复版本为 `1.9.98-local.8`，待完成生产构建、VSIX 验包、提交和 `personal/main` 远端 SHA 核对。
 
 ### 2026-09-15：v1.9.98 集成与 `.7` 外观配置层（本轮）
 

@@ -8,6 +8,15 @@
 - 修复外部磁盘、包含空格的目录和 Typora 笔记中的图片路径无法加载的问题。
 - 增加本地 HTML 图片标签的兼容处理；本 Fork 同时保留本地路径校验和 Webview 资源根限制。
 
+## v1.9.98-local.8 - 代码审计修复与 Extension Host 验收
+
+- 修复 Markdown Webview CSP 中不必要的 `'unsafe-eval'`，并将该约束加入安全回归检查。
+- 在根级 `overrides` 中固定 `diff` `^8.0.4`、`serialize-javascript` `^7.0.6`，以及 ExcelJS 使用的 `uuid` `^11.1.1`；不降级 ExcelJS，不使用 `npm audit fix --force`。
+- 修复 Extension Host 测试入口：显式使用 Mocha BDD 界面，并为 headless/Docker 执行加入禁用 GPU 与共享内存降级参数。
+- 在 Node 24 + Docker + Xvfb 中完成干净安装、类型检查、构建、安全回归和 4 项 Extension Host 测试；在线 `npm audit` 结果为 0 项漏洞。
+- 保留外部 KaTeX CSS CDN、绝对路径图片和大批量 Webview 消息作为代码审计报告中的后续治理项；这些边界未被隐瞒为已修复。
+- VSIX 版本升级为 `1.9.98-local.8`。
+
 ## v1.9.98-local.7 - Markdown 双栏字号与安全治理闭环
 
 - 新增 `xlsxViewer.md.editorFontSize` 和 `xlsxViewer.md.editorLineHeight`，可独立调整 `Split Edit` 左侧 Markdown 编辑区。
