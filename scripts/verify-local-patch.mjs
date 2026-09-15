@@ -13,7 +13,9 @@ const requiredDefaults = {
     'xlsxViewer.md.previewBackgroundColor': '',
     'xlsxViewer.md.previewTextColor': '',
     'xlsxViewer.md.previewFontSize': '',
-    'xlsxViewer.md.previewLineHeight': ''
+    'xlsxViewer.md.previewLineHeight': '',
+    'xlsxViewer.md.editorFontSize': '16px',
+    'xlsxViewer.md.editorLineHeight': '1.8'
 };
 
 const requiredThemeDefaults = {
@@ -51,11 +53,22 @@ for (const [key, expectedDefault] of Object.entries(requiredThemeDefaults)) {
 const provider = readFileSync('src/mdEditorProvider.ts', 'utf8');
 const webview = readFileSync('src/webviews/md/mdWebview.ts', 'utf8');
 const css = readFileSync('resources/md/mdWebview.css', 'utf8');
+const sharedThemeCss = readFileSync('resources/shared/theme.css', 'utf8');
 const requiredSourceMarkers = [
     'getMarkdownSettings',
     'applyMarkdownAppearance',
     '--xlsx-viewer-md-mark-background',
     'background-color: var(--xlsx-viewer-md-mark-background)',
+    '--xlsx-viewer-md-editor-font-size',
+    '--xlsx-viewer-md-editor-line-height',
+    'font-size: var(--xlsx-viewer-md-editor-font-size)',
+    'line-height: var(--xlsx-viewer-md-editor-line-height)',
+    'sanitizeAppearanceValue',
+    'appearanceConfigKeys',
+    'txtMarkBackgroundColor',
+    'txtPreviewBackgroundColor',
+    'txtEditorFontSize',
+    'settings-section-title',
     'MarkdownThemeService',
     'applyExternalMarkdownTheme',
     'md-sidebar-toc',
@@ -64,7 +77,7 @@ const requiredSourceMarkers = [
 ];
 
 for (const marker of requiredSourceMarkers) {
-    if (![provider, webview, css].some(source => source.includes(marker))) {
+    if (![provider, webview, css, sharedThemeCss].some(source => source.includes(marker))) {
         throw new Error(`Local patch source marker is missing: ${marker}`);
     }
 }

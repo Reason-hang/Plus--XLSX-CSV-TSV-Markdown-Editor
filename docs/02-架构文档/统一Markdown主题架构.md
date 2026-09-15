@@ -1,7 +1,7 @@
 # 统一 Markdown 主题架构
 
 > 状态：已实现
-> 更新时间：2026-08-31
+> 更新时间：2026-09-15
 > 文档类型：架构长文档
 
 ## 目录
@@ -68,6 +68,20 @@ XLSX 插件由扩展宿主读取配置，校验外置 CSS 后把内容作为独�
 启用监听后，CSS 或 manifest 创建、修改、删除都会触发重新加载。重新加载失败时，如果存在同一路径上一次成功的主题，会继续使用旧主题并报告 fallback 状态；首次加载失败则报告 error，不注入坏 CSS。
 
 主题 CSS 目前限制为本地绝对路径、最大 2 MiB、无 @import、无远程资源、无 html/body 全局选择器。这个边界是为了保护 Webview 和本机数据，不是 Less 能力限制。
+
+## 双栏外观配置层
+
+左右 Markdown 视图的用户可调外观使用同一份 `MarkdownAppearanceSettings` 数据结构：扩展宿主从 `xlsxViewer.md.*` 设置读取，Webview 通过 CSS 变量同时驱动左侧编辑区和右侧预览区。插件 `Settings` 面板只是这组字段的受控表单，不另起一套主题 DSL，也不允许输入完整 CSS。
+
+当前字段分为三组：
+
+| 分组 | 字段 | 作用 |
+| --- | --- | --- |
+| `<mark>` | `markBackgroundColor`、`markTextColor`、`markFontWeight`、`markPadding`、`markBorderRadius` | 统一重点高亮外观 |
+| 预览 | `previewBackgroundColor`、`previewTextColor`、`previewFontSize`、`previewLineHeight` | 调整右侧阅读视图；留空时跟随 IDE 主题 |
+| 编辑 | `editorFontSize`、`editorLineHeight` | 调整左侧 Markdown 源码编辑区 |
+
+扩展新字段时，只需同步更新 `package.json`、`getMarkdownSettings`、`updateSettings`、设置面板定义、验证脚本和文档；CSS 变量和配置对象保持稳定，避免每次视觉微调都重新设计架构。宿主在写入和发送 Webview 前拒绝声明分隔符、HTML 尖括号、远程 `url()` 和脚本表达式，防止受控配置退化为 CSS 注入入口。
 
 ## 兼容与安全边界
 

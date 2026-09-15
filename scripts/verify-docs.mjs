@@ -16,7 +16,7 @@ const requiredFiles = [
   'docs/07-版本与发布/版本记录表模板.md',
   'docs/AI自主决策记录文档.md'
 ];
-const ignoredDirectories = new Set(['.git', 'node_modules', 'out']);
+const ignoredDirectories = new Set(['.git', 'node_modules', 'out', '.vscode-test']);
 const markdownFiles = [];
 const failures = [];
 

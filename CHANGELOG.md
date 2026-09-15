@@ -8,6 +8,16 @@
 - 修复外部磁盘、包含空格的目录和 Typora 笔记中的图片路径无法加载的问题。
 - 增加本地 HTML 图片标签的兼容处理；本 Fork 同时保留本地路径校验和 Webview 资源根限制。
 
+## v1.9.98-local.7 - Markdown 双栏字号与安全治理闭环
+
+- 新增 `xlsxViewer.md.editorFontSize` 和 `xlsxViewer.md.editorLineHeight`，可独立调整 `Split Edit` 左侧 Markdown 编辑区。
+- 保留并明确 `xlsxViewer.md.previewFontSize` 和 `xlsxViewer.md.previewLineHeight`，左右视图均可在 `settings.json` 中配置。
+- 新增 `Settings` 面板的 `Markdown appearance` 受控分组，可直接调整 `<mark>`、预览和编辑区的外观字段；配置通过 CSS 变量复用，不引入任意 CSS/脚本编辑器。
+- 明确重点高亮快捷键是扩展包内置的 `contributes.keybindings`，不再把用户级 `keybindings.json` 作为正式方案；快捷键继续生成标准 `<mark>…</mark>`。
+- 将原作者仓库 `v1.9.98`（`fd6ed727bf241f6fd2c1380a609e7c728e108ee4`）正式建立为本地集成基线，并保留路径/图片兼容修复与资源根安全边界。
+- 补充上游 `v1.9.97` 与本地安全修复链路的来源对比、Webview 风险边界和三 IDE 真实验收门禁。
+- 完善版本记录、安装回退、构建和安全治理文档，版本号升级为 `1.9.98-local.7`。
+
 ## v1.9.98-local.6 - Markdown 重点高亮快捷键
 
 - 新增默认快捷键：macOS 为 `⌘ Command + ⌥ Option + ⇧ Shift + 3`，Windows/Linux 为 `Ctrl + Alt + Shift + 3`。
@@ -27,7 +37,7 @@
 - 核心文件写入改为临时文件加原子替换，降低进程中断造成半写文件的风险。
 - Markdown 版本历史改为独立快照加索引，并增加 48 小时、200 条和 50 MiB 上限；兼容迁移旧 JSON 历史。
 - 修复 CSV 分隔符模块级可变状态、UTF-8 BOM 和稀疏 XLSX 有效范围风险；转换后样式失败时不再误报为整个转换失败。
-- 新增 `npm run verify:security` 安全与回归静态测试；在线依赖审计当前仍有 8 项漏洞（4 low、3 moderate、1 high、0 critical），high 项来自测试工具链；三 IDE 实机验收仍需单独完成。
+- 新增 `npm run verify:security` 安全与回归静态测试；补齐 `@vscode/test-cli` / `@vscode/test-electron` 和安全回归测试源，在线依赖审计当前仍有 6 项漏洞（2 low、3 moderate、1 high、0 critical），high 项来自测试工具链；三 IDE 实机验收仍需单独完成。
 - 移除无自动修复的 `markdown-it-katex`，改用直接 `katex` 集成并强制 `trust: false`；补充 Mermaid 代码块内容和语言类名的 HTML 属性边界转义，并按锁文件执行不带 `--force` 的可兼容传递依赖修复。
 
 ## v1.9.98-local.2 - 完整 Markdown 主题增强版

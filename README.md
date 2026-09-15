@@ -15,10 +15,10 @@
 
 这是一个面向 VS Code 系 IDE 的开源 Fork 项目，用于在编辑器内查看和编辑 XLSX、CSV、TSV 与 GitHub Flavored Markdown 文件。
 
-项目基于上游 [`muhammad-ahmad.xlsx-viewer`](https://github.com/Mahmadabid/XLSX-CSV-TSV-MARKDOWN-Editor-Vscode-Extension) 的 `v1.9.97` 源码构建。本仓库当前包含完整 Markdown 主题增强：用一份版本化 Less 主题生成单一 CSS，供本扩展与 Markdown Preview Enhanced（MPE）共同使用。
+项目以原作者仓库的 `v1.9.98`（提交 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4`）作为当前集成基线，并在此基础上保留本地安全修复和 Markdown 主题增强；`v1.9.97` 仍作为历史功能对比基线。主题增强用一份版本化 Less 主题生成单一 CSS，供本扩展与 Markdown Preview Enhanced（MPE）共同使用。
 
-> 安全提示：当前锁文件在线审计结果为 8 项漏洞（4 low、3 moderate、1 high、0 critical）；运行时公式渲染已移除无修复的 `markdown-it-katex`，当前 high 项来自测试工具链。个人使用应优先打开可信 Markdown，公开发布前必须完成依赖处置。
-> 当前版本是本地开发补丁 `1.9.98-local.6`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
+> 安全提示：当前锁文件在线审计结果为 6 项漏洞（2 low、3 moderate、1 high、0 critical）；运行时公式渲染已移除无修复的 `markdown-it-katex`，当前 high 项来自测试工具链。个人使用应优先打开可信 Markdown，公开发布前必须完成依赖处置。
+> 当前版本是本地开发补丁 `1.9.98-local.7`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
 
 ## 功能概览
 
@@ -102,13 +102,37 @@
 
 选中 Markdown 文本后，按 `⌘ Command + ⌥ Option + ⇧ Shift + 3`，会立即写入 `<mark>选中文本</mark>`。原生 Markdown 编辑器和插件的 `Split Edit` 左侧编辑区都支持；右侧预览会实时显示橙色高亮。未选中文本时不会插入空标签。Windows/Linux 使用 `Ctrl + Alt + Shift + 3`。`⌘B` 仅用于加粗，`**重点**` 只会加粗，`!!重点!!`、`{{重点}}`、`%%重点%%` 不会高亮。不要再在 Markdown 正文中写 `<style>` 修改预览样式：它不是受支持的主题入口，安全渲染会净化危险样式。
 
+### 高亮快捷键的配置边界
+
+高亮快捷键是插件内置能力，定义在扩展包 `package.json` 的 `contributes.keybindings` 中；用户不需要、也不应把它复制到 IDE 的 `keybindings.json` 作为本项目的正式配置方案。这样可以让同一个 VSIX 在 VS Code、Cursor 和 Antigravity 中保持一致，并始终生成标准、可保存、可跨 IDE 阅读的 `<mark>…</mark>` 标签。
+
+此前文档中曾建议通过用户级 `keybindings.json` 配置快捷键，该建议已被本版本的内置快捷键方案取代。`keybindings.json` 仍可用于用户自定义其他 IDE 快捷键，但不作为本插件重点高亮快捷键的交付入口。
+
+### Markdown 左右视图字号配置
+
+`1.9.98-local.7` 支持分别配置 `Split Edit` 左侧编辑区和右侧预览区的字号、行高。在 IDE 的 `Preferences: Open User Settings (JSON)` 中加入：
+
+```json
+{
+  "xlsxViewer.md.editorFontSize": "16px",
+  "xlsxViewer.md.editorLineHeight": "1.8",
+  "xlsxViewer.md.previewFontSize": "17px",
+  "xlsxViewer.md.previewLineHeight": "1.8"
+}
+```
+
+修改后执行 `Developer: Reload Window`。字号配置写在 `settings.json`，不是 `keybindings.json`；不需要在 Markdown 正文中加入 `<style>`。
+
+也可以直接打开插件工具栏中的 `Settings` 面板，在 `Markdown appearance` 分组调整高亮、预览颜色、字号和行高。面板只暴露受控的外观字段，不提供任意 CSS/脚本编辑；空的预览颜色、字号或行高会继续跟随 IDE 主题。保存后当前 Webview 会立即应用，重载窗口后仍会从扩展设置恢复。
+
 ## 相对上游 v1.9.97 的增强
 
-当前本地包为 `1.9.98-local.6`；对比上游 `v1.9.97`（`cb1c765`），XLSX、CSV、TSV 原有编辑能力保持不变，新增与修复如下：
+当前本地包为 `1.9.98-local.7`；集成基线为上游 `v1.9.98`（`fd6ed727`），功能差异仍以历史上游 `v1.9.97`（`cb1c765`）作为完整对照，XLSX、CSV、TSV 原有编辑能力保持不变，新增与修复如下：
 
 | 模块 | 新增或修改 | 实际作用 |
 | --- | --- | --- |
 | Markdown 外观 | 全局 `<mark>` 配置、预览背景/文字/字号/行高配置 | 统一重点样式和阅读体验，无需逐篇写内联样式 |
+| 双栏排版 | 新增编辑区字号/行高设置 `xlsxViewer.md.editorFontSize`、`xlsxViewer.md.editorLineHeight` | 左侧编辑与右侧预览可分别调节，不影响 IDE 其他编辑器 |
 | 重点高亮快捷键 | `⌘⌥⇧3`（Windows/Linux：`Ctrl+Alt+Shift+3`）将选区写成 `<mark>…</mark>` | 编辑和预览同步高亮，文档可保存、可跨 IDE 阅读 |
 | 统一主题 | Less 单一主题源、外置 CSS、manifest 校验、自动监听刷新、MPE 适配 | 本插件与 MPE 可复用同一主题 |
 | 深色预览 | 未配置预览颜色时跟随 IDE；表头文字继承主题前景色，表格交替行 | 深色模式下预览、表头和表格均可读 |
@@ -138,14 +162,15 @@ npm run verify:security
 npm run verify:local-patch
 npm run verify:theme-system
 npm run verify:docs
-npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.6.vsix"
+npm test  # 首次运行会下载对应 VS Code Extension Host
+npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.7.vsix"
 ```
 
-手动安装或将 `.5` 替换为 `.6`：
+手动安装或将旧版本替换为 `.7`：
 
-1. 下载或选择 `muhammad-ahmad.xlsx-viewer-1.9.98-local.6.vsix`。
+1. 下载或选择 `muhammad-ahmad.xlsx-viewer-1.9.98-local.7.vsix`。
 2. 在 VS Code、Cursor 或 Antigravity 按 `⌘ Command + ⇧ Shift + P`，执行 `Extensions: Install from VSIX...`。
-3. 选择该 VSIX；出现升级提示时确认。扩展 ID 相同且 `.6` 版本更高，无需先卸载 `.5`。
+3. 选择该 VSIX；出现升级提示时确认。扩展 ID 相同且 `.7` 版本更高，无需先卸载旧版本。
 4. 再按 `⌘ Command + ⇧ Shift + P`，执行 `Developer: Reload Window`。
 5. 关闭并重新打开 Markdown 文件，点击 `Split Edit`，确认右侧预览与表格样式。
 

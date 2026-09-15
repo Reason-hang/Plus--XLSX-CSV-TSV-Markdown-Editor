@@ -10,6 +10,22 @@ import { isPathWithin } from './shared/pathSafety';
 import { writeBufferFileAtomically, writeTextFileAtomically } from './shared/atomicFile';
 import { hashBuffer, hashFile } from './shared/fileFingerprint';
 
+/**
+ * Appearance values are user-configurable CSS property values, not arbitrary
+ * stylesheet fragments. Keep the settings surface deliberately small and
+ * reject delimiters/functions that could escape a single declaration.
+ */
+function sanitizeAppearanceValue(value: unknown, fallback = ''): string {
+    if (typeof value !== 'string') {
+        return fallback;
+    }
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.length > 128 || /[;{}<>]/.test(trimmed) || /(?:url\s*\(|expression\s*\(|javascript\s*:|@import)/i.test(trimmed)) {
+        return fallback;
+    }
+    return trimmed;
+}
+
 export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vscode.Disposable {
     private readonly markdownThemeService = new MarkdownThemeService();
     private readonly webviewPanels = new Set<vscode.WebviewPanel>();
@@ -76,15 +92,17 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
             isMdEnabled,
             theme: this.markdownThemeService.getPayload(),
             appearance: {
-                markBackgroundColor: cfg.get('md.markBackgroundColor', '#FF4E00'),
-                markTextColor: cfg.get('md.markTextColor', 'inherit'),
-                markFontWeight: cfg.get('md.markFontWeight', 'inherit'),
-                markPadding: cfg.get('md.markPadding', '0 2px'),
-                markBorderRadius: cfg.get('md.markBorderRadius', '2px'),
-                previewBackgroundColor: cfg.get('md.previewBackgroundColor', ''),
-                previewTextColor: cfg.get('md.previewTextColor', ''),
-                previewFontSize: cfg.get('md.previewFontSize', ''),
-                previewLineHeight: cfg.get('md.previewLineHeight', '')
+                markBackgroundColor: sanitizeAppearanceValue(cfg.get('md.markBackgroundColor', '#FF4E00'), '#FF4E00'),
+                markTextColor: sanitizeAppearanceValue(cfg.get('md.markTextColor', 'inherit'), 'inherit'),
+                markFontWeight: sanitizeAppearanceValue(cfg.get('md.markFontWeight', 'inherit'), 'inherit'),
+                markPadding: sanitizeAppearanceValue(cfg.get('md.markPadding', '0 2px'), '0 2px'),
+                markBorderRadius: sanitizeAppearanceValue(cfg.get('md.markBorderRadius', '2px'), '2px'),
+                previewBackgroundColor: sanitizeAppearanceValue(cfg.get('md.previewBackgroundColor', '')),
+                previewTextColor: sanitizeAppearanceValue(cfg.get('md.previewTextColor', '')),
+                previewFontSize: sanitizeAppearanceValue(cfg.get('md.previewFontSize', '')),
+                previewLineHeight: sanitizeAppearanceValue(cfg.get('md.previewLineHeight', '')),
+                editorFontSize: sanitizeAppearanceValue(cfg.get('md.editorFontSize', '16px'), '16px'),
+                editorLineHeight: sanitizeAppearanceValue(cfg.get('md.editorLineHeight', '1.8'), '1.8')
             }
         };
     }
@@ -490,6 +508,27 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                             }
                             if (typeof s.showLineNumbers === 'boolean') {
                                 await cfg.update('md.showLineNumbers', !!s.showLineNumbers, vscode.ConfigurationTarget.Global);
+                            }
+
+                            const appearance = s.appearance && typeof s.appearance === 'object' ? s.appearance : {};
+                            const appearanceConfigKeys: Array<[keyof typeof appearance, string]> = [
+                                ['markBackgroundColor', 'md.markBackgroundColor'],
+                                ['markTextColor', 'md.markTextColor'],
+                                ['markFontWeight', 'md.markFontWeight'],
+                                ['markPadding', 'md.markPadding'],
+                                ['markBorderRadius', 'md.markBorderRadius'],
+                                ['previewBackgroundColor', 'md.previewBackgroundColor'],
+                                ['previewTextColor', 'md.previewTextColor'],
+                                ['previewFontSize', 'md.previewFontSize'],
+                                ['previewLineHeight', 'md.previewLineHeight'],
+                                ['editorFontSize', 'md.editorFontSize'],
+                                ['editorLineHeight', 'md.editorLineHeight']
+                            ];
+                            for (const [property, configKey] of appearanceConfigKeys) {
+                                if (typeof appearance[property] === 'string') {
+                                    const value = sanitizeAppearanceValue(appearance[property]);
+                                    await cfg.update(configKey, value, vscode.ConfigurationTarget.Global);
+                                }
                             }
                         } catch (err) {
                             console.error('Failed to persist settings:', err);

@@ -5,10 +5,13 @@ export interface SettingDefinition {
     label: string;
     onChange: (value: any) => void;
     defaultValue?: boolean;
+    defaultTextValue?: string;
     tooltip?: string;
-    inputType?: 'checkbox' | 'radio';
+    inputType?: 'checkbox' | 'radio' | 'text' | 'number';
     groupName?: string;
     value?: string;
+    placeholder?: string;
+    section?: string;
     className?: string;
 }
 
@@ -49,19 +52,34 @@ export class SettingsManager {
         panel.setAttribute('aria-hidden', 'true');
         
         let html = '<div class="settings-group">';
+        let currentSection = '';
         settings.forEach(s => {
+            if (s.section && s.section !== currentSection) {
+                currentSection = s.section;
+                html += `<div class="settings-section-title">${this.escapeHtml(currentSection)}</div>`;
+            }
             const safeId = this.escapeHtml(s.id);
             const safeLabel = this.escapeHtml(s.label);
             const tooltip = s.tooltip && s.tooltip.trim().length > 0 ? s.tooltip : s.label;
             const safeTooltip = this.escapeHtml(tooltip);
-            const inputType = s.inputType === 'radio' ? 'radio' : 'checkbox';
+            const inputType = s.inputType === 'radio' || s.inputType === 'text' || s.inputType === 'number'
+                ? s.inputType
+                : 'checkbox';
             const safeGroupName = this.escapeHtml(s.groupName || '');
             const safeValue = this.escapeHtml(s.value || '');
+            const safeTextValue = this.escapeHtml(s.defaultTextValue || '');
+            const safePlaceholder = this.escapeHtml(s.placeholder || '');
             const safeClassName = this.escapeHtml((s.className || '').trim());
             const groupAttr = inputType === 'radio' && safeGroupName ? ` name="${safeGroupName}"` : '';
             const valueAttr = inputType === 'radio' ? ` value="${safeValue}"` : '';
+            const textValueAttr = inputType === 'text' || inputType === 'number' ? ` value="${safeTextValue}"` : '';
+            const placeholderAttr = safePlaceholder ? ` placeholder="${safePlaceholder}"` : '';
             const extraClass = safeClassName ? ` ${safeClassName}` : '';
-            html += `<label class="setting-item tooltip${extraClass}"><input type="${inputType}" id="${safeId}"${groupAttr}${valueAttr}/> <span>${safeLabel}</span><span class="tooltiptext hidden">${safeTooltip}</span></label>`;
+            const control = `<input type="${inputType}" id="${safeId}"${groupAttr}${valueAttr}${textValueAttr}${placeholderAttr}/>`;
+            const labelContent = inputType === 'text' || inputType === 'number'
+                ? `<span>${safeLabel}</span>${control}`
+                : `${control} <span>${safeLabel}</span>`;
+            html += `<label class="setting-item tooltip${extraClass}">${labelContent}<span class="tooltiptext hidden">${safeTooltip}</span></label>`;
         });
         html += '</div>';
         html += `<button id="${cancelId}" class="toggle-button" title="Close">Close</button>`;
@@ -92,11 +110,16 @@ export class SettingsManager {
                 if (setting.defaultValue !== undefined) {
                     el.checked = setting.defaultValue;
                 }
+                if (setting.defaultTextValue !== undefined) {
+                    el.value = setting.defaultTextValue;
+                }
                 el.addEventListener('change', () => {
                     if (setting.inputType === 'radio') {
                         if (el.checked) {
                             setting.onChange(el.value);
                         }
+                    } else if (setting.inputType === 'text' || setting.inputType === 'number') {
+                        setting.onChange(el.value.trim());
                     } else {
                         setting.onChange(el.checked);
                     }

@@ -153,6 +153,8 @@ type MarkdownAppearanceSettings = {
     previewTextColor?: string;
     previewFontSize?: string;
     previewLineHeight?: string;
+    editorFontSize?: string;
+    editorLineHeight?: string;
 };
 
 type MarkdownThemePayload = {
@@ -186,6 +188,8 @@ function applyMarkdownAppearance(appearance?: MarkdownAppearanceSettings): void 
     setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-color', appearance?.previewTextColor);
     setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-font-size', appearance?.previewFontSize);
     setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-line-height', appearance?.previewLineHeight);
+    rootStyle.setProperty('--xlsx-viewer-md-editor-font-size', cssValueOrFallback(appearance?.editorFontSize, '16px'));
+    rootStyle.setProperty('--xlsx-viewer-md-editor-line-height', cssValueOrFallback(appearance?.editorLineHeight, '1.8'));
 }
 
 function applyExternalMarkdownTheme(theme?: MarkdownThemePayload): void {
@@ -1857,6 +1861,27 @@ function applySettings(settings: any, persist = false) {
     if (chkShowOutline) chkShowOutline.checked = currentSettings.showOutline;
     if (chkShowLineNumbers) chkShowLineNumbers.checked = currentSettings.showLineNumbers;
 
+    const appearance = currentSettings.appearance || {};
+    const appearanceInputs: Array<[string, string | undefined]> = [
+        ['txtMarkBackgroundColor', appearance.markBackgroundColor],
+        ['txtMarkTextColor', appearance.markTextColor],
+        ['txtMarkFontWeight', appearance.markFontWeight],
+        ['txtMarkPadding', appearance.markPadding],
+        ['txtMarkBorderRadius', appearance.markBorderRadius],
+        ['txtPreviewBackgroundColor', appearance.previewBackgroundColor],
+        ['txtPreviewTextColor', appearance.previewTextColor],
+        ['txtEditorFontSize', appearance.editorFontSize],
+        ['txtEditorLineHeight', appearance.editorLineHeight],
+        ['txtPreviewFontSize', appearance.previewFontSize],
+        ['txtPreviewLineHeight', appearance.previewLineHeight]
+    ];
+    appearanceInputs.forEach(([id, value]) => {
+        const input = $(id) as HTMLInputElement;
+        if (input && typeof value === 'string') {
+            input.value = value;
+        }
+    });
+
     // Line numbers
     document.body.classList.toggle('show-line-numbers', !!currentSettings.showLineNumbers);
 
@@ -1881,6 +1906,11 @@ function applySettings(settings: any, persist = false) {
 }
 
 function initializeSettings() {
+    const appearanceValue = (key: keyof MarkdownAppearanceSettings, value: string) => {
+        currentSettings.appearance = { ...(currentSettings.appearance || {}), [key]: value };
+        applySettings(currentSettings, true);
+    };
+
     const settingsDefs = [
         {
             id: 'chkWordWrap',
@@ -1971,6 +2001,127 @@ function initializeSettings() {
                 (currentSettings as any).showPopups = val;
                 applySettings(currentSettings, true);
             }
+        },
+        {
+            id: 'txtMarkBackgroundColor',
+            label: 'Highlight background',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markBackgroundColor || '#FF4E00',
+            placeholder: '#FF4E00',
+            tooltip: 'Background color for standard <mark> highlights, for example #FF4E00.',
+            onChange: (val: string) => appearanceValue('markBackgroundColor', val)
+        },
+        {
+            id: 'txtMarkTextColor',
+            label: 'Highlight text color',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markTextColor || 'inherit',
+            placeholder: 'inherit',
+            tooltip: 'Text color for <mark> highlights, or inherit to follow the preview text color.',
+            onChange: (val: string) => appearanceValue('markTextColor', val)
+        },
+        {
+            id: 'txtMarkFontWeight',
+            label: 'Highlight weight',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markFontWeight || 'inherit',
+            placeholder: 'inherit',
+            tooltip: 'Font weight for <mark> highlights, for example 700 or inherit.',
+            onChange: (val: string) => appearanceValue('markFontWeight', val)
+        },
+        {
+            id: 'txtMarkPadding',
+            label: 'Highlight padding',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markPadding || '0 2px',
+            placeholder: '0 2px',
+            tooltip: 'Padding around <mark> highlights, for example 0 2px.',
+            onChange: (val: string) => appearanceValue('markPadding', val)
+        },
+        {
+            id: 'txtMarkBorderRadius',
+            label: 'Highlight radius',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markBorderRadius || '2px',
+            placeholder: '2px',
+            tooltip: 'Border radius for <mark> highlights, for example 2px.',
+            onChange: (val: string) => appearanceValue('markBorderRadius', val)
+        },
+        {
+            id: 'txtPreviewBackgroundColor',
+            label: 'Preview background',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.previewBackgroundColor || '',
+            placeholder: 'follow IDE theme',
+            tooltip: 'Preview background color. Leave empty to follow the IDE theme.',
+            onChange: (val: string) => appearanceValue('previewBackgroundColor', val)
+        },
+        {
+            id: 'txtPreviewTextColor',
+            label: 'Preview text color',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.previewTextColor || '',
+            placeholder: 'follow IDE theme',
+            tooltip: 'Preview text color. Leave empty to follow the IDE theme.',
+            onChange: (val: string) => appearanceValue('previewTextColor', val)
+        },
+        {
+            id: 'txtEditorFontSize',
+            label: 'Editor font size',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.editorFontSize || '16px',
+            placeholder: '16px',
+            tooltip: 'Font size for the left Markdown editor pane, for example 16px.',
+            onChange: (val: string) => appearanceValue('editorFontSize', val)
+        },
+        {
+            id: 'txtEditorLineHeight',
+            label: 'Editor line height',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.editorLineHeight || '1.8',
+            placeholder: '1.8',
+            tooltip: 'Line height for the left Markdown editor pane, for example 1.8.',
+            onChange: (val: string) => appearanceValue('editorLineHeight', val)
+        },
+        {
+            id: 'txtPreviewFontSize',
+            label: 'Preview font size',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.previewFontSize || '',
+            placeholder: '17px',
+            tooltip: 'Font size for the right Markdown preview pane, for example 17px.',
+            onChange: (val: string) => appearanceValue('previewFontSize', val)
+        },
+        {
+            id: 'txtPreviewLineHeight',
+            label: 'Preview line height',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.previewLineHeight || '',
+            placeholder: '1.8',
+            tooltip: 'Line height for the right Markdown preview pane, for example 1.8.',
+            onChange: (val: string) => appearanceValue('previewLineHeight', val)
         }
     ];
 

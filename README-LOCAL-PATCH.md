@@ -13,9 +13,9 @@
 
 ## 1. 目标与边界
 
-本 Fork 是个人侧载用的补丁版，基于上游 `muhammad-ahmad.xlsx-viewer` v1.9.97。当前版本为 `1.9.98-local.6`，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`，因此同一个 IDE 中会替换官方扩展，不能并存。
+本 Fork 是个人侧载用的补丁版，当前以原作者仓库 `v1.9.98`（提交 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4`）作为集成基线；`v1.9.97` 仅作为历史对照基线。当前版本为 `1.9.98-local.7`，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`，因此同一个 IDE 中会替换官方扩展，不能并存。
 
-当前锁文件在线审计结果为 8 项漏洞（4 low、3 moderate、1 high、0 critical）。运行时公式渲染已改为直接使用 `katex`，移除了无自动修复的 `markdown-it-katex`；本版本已完成代码级净化和不带 `--force` 的传递依赖锁文件修复，但测试工具链的审计残余仍未全部关闭。
+当前锁文件在线审计结果为 6 项漏洞（2 low、3 moderate、1 high、0 critical）。运行时公式渲染已改为直接使用 `katex`，移除了无自动修复的 `markdown-it-katex`；本版本已完成代码级净化和不带 `--force` 的传递依赖锁文件修复，但测试工具链的审计残余仍未全部关闭。测试 CLI 依赖为开发期工具，不进入 VSIX 运行时。
 
 本次完整增强版的目标是：只维护一份 Less 主题源码，生成一份 CSS，同时供本扩展和 Markdown Preview Enhanced（MPE）使用；Markdown 正文只写语义明确的 `<mark>重点</mark>`，不再为每篇文档插入 `<style>` 或冗长的 `<span style="...">`。本版本同时收敛外部输入净化、保存前一致性校验、原子写入和版本历史上限。
 
@@ -73,6 +73,21 @@ Markdown 正文只写：
 ```
 
 选中文字后按 `⌘ Command + ⌥ Option + ⇧ Shift + 3`（Windows/Linux：`Ctrl + Alt + Shift + 3`），原生编辑器和 `Split Edit` 左侧编辑区都会写入同样的 `<mark>选中文本</mark>`；右侧预览实时显示橙色高亮。
+
+高亮快捷键是插件内置在扩展包 `package.json` 的 `contributes.keybindings` 中的能力，不需要配置到用户的 `keybindings.json`。此前关于通过 `keybindings.json` 配置本插件重点高亮快捷键的说明已废止；用户级快捷键文件只用于其他个人快捷键，不是本插件的正式交付入口。
+
+左右视图字号可在 IDE 的 `settings.json` 中分别设置：
+
+```json
+{
+  "xlsxViewer.md.editorFontSize": "16px",
+  "xlsxViewer.md.editorLineHeight": "1.8",
+  "xlsxViewer.md.previewFontSize": "17px",
+  "xlsxViewer.md.previewLineHeight": "1.8"
+}
+```
+
+也可打开插件工具栏的 `Settings` 面板，在 `Markdown appearance` 分组调整这些字号、行高，以及 `<mark>` 背景/文字/字重/内边距/圆角和预览背景/文字颜色。该面板是受控配置入口，不允许输入任意 CSS 规则或脚本；设置值保存到扩展配置，并在当前 Webview 即时生效。
 
 日常改主题时只编辑 `themes/markdown-theme/theme.less` 或 `partials/*.less`，然后任选一种方式：
 
@@ -132,7 +147,8 @@ npm run package
 npm run verify:local-patch
 npm run verify:theme-system
 npm run verify:docs
-npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.6.vsix"
+npm test  # 首次运行会下载对应 VS Code Extension Host
+npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.7.vsix"
 ```
 
 通过 IDE 的 `Extensions: Install from VSIX...` 安装；不要直接把解压目录复制到 `~/.vscode/extensions`、`~/.cursor/extensions` 或 `~/.antigravity/extensions`。安装后关闭该扩展的自动更新，避免被官方版本覆盖。

@@ -1,7 +1,7 @@
 # AI自主决策记录文档
 
 > 状态：持续记录
-> 更新时间：2026-08-31
+> 更新时间：2026-09-15
 > 任务：整理文档目录、收敛当前项目事实、补齐完整增强版说明，并在验证后推送仓库
 
 ## 目录
@@ -23,8 +23,10 @@
 | 项目 | 事实 |
 | --- | --- |
 | 仓库 | 当前工作区对应的 Plus XLSX, CSV, TSV & Markdown Editor Fork |
-| 分支 | codex/local-markdown-appearance |
-| 当前版本 | 1.9.98-local.6 |
+| 分支 | codex/release-1.9.98-local.7（待合并推送到 `personal/main`） |
+| 上游集成基线 | v1.9.98，`fd6ed727bf241f6fd2c1380a609e7c728e108ee4` |
+| 历史对比基线 | v1.9.97，`cb1c765c0da95d49ecd50ec3b0e26ca7ca185ebb` |
+| 当前版本 | 1.9.98-local.7 |
 | 远端发布目标 | personal/main |
 | 主题实现 | 已有外置 CSS、manifest、监听、回退和 MPE 适配基础 |
 | 真实 IDE 验收 | 本次不自动安装，需人工执行 |
@@ -35,7 +37,7 @@
 
 - 风险等级：中
 - 背景：历史对话和旧交付物中存在不同版本、不同主题方案和不同路径描述。
-- 证据：当前 package.json 版本为 1.9.98-local.6；src/shared/markdownThemeService.ts 已包含外置 CSS 加载、路径校验、manifest 提示、监听和失败回退；本次审计修复还增加了渲染净化、保存一致性校验和原子写入。
+- 证据：当前 package.json 版本已升级为 1.9.98-local.7；src/shared/markdownThemeService.ts 已包含外置 CSS 加载、路径校验、manifest 提示、监听和失败回退；审计修复还增加了渲染净化、保存一致性校验和原子写入。
 - 候选方案：直接沿用旧文档；以当前工作区重新核对；只整理用户提供的方案文本。
 - 决策：以当前工作区源码、package.json、生成物、测试命令和 Git 现场为准；旧描述只有在当前代码仍支持时才保留。
 - 执行范围：所有 README、docs、主题说明和测试说明。
@@ -173,7 +175,58 @@
 - 验证方式：全量自动化检查、VSIX 打包、Git diff 检查、提交后 `git ls-remote personal refs/heads/main` 比对。
 - 残余风险：三套 IDE 的真实 UI 验收由用户在目标环境完成，本轮不能代替。
 
+### D-015：将重点高亮快捷键的正式入口固定为扩展内置贡献点
+
+- 风险等级：中
+- 背景：历史说明曾要求用户将 `editor.action.insertSnippet` 写入 `keybindings.json`，这会造成“插件自带能力”和“用户本地覆盖”边界混淆，也可能在不同 IDE 中出现配置漂移。
+- 候选方案：继续要求用户配置 `keybindings.json`；完全移除快捷键；在扩展 `package.json` 的 `contributes.keybindings` 中声明 macOS 与 Windows/Linux 快捷键，并在 README 明确用户级文件不是正式入口。
+- 决策：采用第三种方案。扩展内置 `⌘⌥⇧3` / `Ctrl+Alt+Shift+3`，统一生成标准 `<mark>${TM_SELECTED_TEXT}</mark>`；用户级 `keybindings.json` 仅保留给其他个人快捷键。
+- 原因：安装 VSIX 后开箱即用，跨 VS Code、Cursor、Antigravity 的交付行为一致，Markdown 文件仍保持跨 IDE 可读。
+- 执行范围：package.json、README、README-LOCAL-PATCH、CHANGELOG、版本记录和验收清单。
+- 验证方式：源码与 VSIX manifest 检查快捷键、when 条件和 snippet 内容；真实 IDE 交互仍需人工验收。
+- 残余风险：用户已有相同快捷键绑定时，IDE 的快捷键解析优先级可能覆盖扩展贡献点；需要在目标 IDE 中记录冲突处理结果。
+
+### D-016：为 Markdown 双栏分别提供字号与行高设置
+
+- 风险等级：低至中
+- 背景：`.6` 右侧预览可配置字号，但左侧 Webview 编辑区固定为 `13px / 1.6`，用户无法在不放大整个 IDE 的情况下改善写作体验。
+- 候选方案：只建议 `window.zoomLevel`；只提高固定 CSS 默认值；新增 `xlsxViewer.md.editorFontSize` 和 `xlsxViewer.md.editorLineHeight`，沿用现有 `previewFontSize` / `previewLineHeight` 配置链路。
+- 决策：采用第三种方案，默认编辑区 `16px / 1.8`，预览区继续支持单独配置；同时把已有 `<mark>` 和预览颜色设置纳入同一个 `Markdown appearance` 受控面板。CSS 通过稳定变量接入，不开放任意 CSS/脚本编辑，也不影响 XLSX、CSV、TSV。
+- 原因：只改变 Markdown Webview 的显示，不扩大 IDE 全局影响面，且设置可被未来主题或用户配置覆盖。
+- 执行范围：package.json、package-lock.json、mdEditorProvider、mdWebview、mdWebview.css、SettingsManager、主题 CSS、verify-local-patch 与用户文档。
+- 验证方式：类型、Lint、源码标记、构建产物和设置默认值检查；真实三 IDE 字号体验仍需现场验收。
+- 残余风险：非法 CSS 值由 Webview CSS 解析器忽略；当前设置是字符串而不是带单位的枚举，文档需提示用户填写合法 CSS 值。
+
+### D-017：以原作者 v1.9.98 建立新的集成基线
+
+- 风险等级：中高
+- 背景：本地 Fork 早期以 v1.9.97 作为功能对照，但原作者仓库已经发布 v1.9.98；继续在旧基线上开发会让外部路径、图片兼容和后续合并边界不清晰。
+- 决策：拉取并核对原作者仓库 `v1.9.98`，以提交 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4` 建立集成基线；保留 `v1.9.97` 作为历史差异基线，并以非快进合并提交保留来源边界。
+- 原因：功能版本号、上游变更和本地安全修复链路可独立追溯；上游的图片路径兼容合并后仍受本地路径校验和 Webview 资源根限制约束。
+- 验证方式：`git ls-remote`、Tag 父子关系、合并冲突核对、类型检查、Lint、生产构建、`verify:security` 和 VSIX 包内容检查。
+- 残余风险：真实 VS Code、Cursor、Antigravity Extension Host 的安装与交互仍需现场验收；上游后续版本仍需按同一流程重新核对。
+
+### D-018：把轻量外观配置做成可扩展但受控的配置层
+
+- 风险等级：中
+- 背景：如果每次字号、行高或高亮颜色需求都直接改 CSS 并重新发版，维护成本会持续上升；如果开放完整主题编辑器，又会扩大安全和兼容范围。
+- 决策：采用“稳定配置对象 + CSS 变量 + 数据驱动设置面板”的轻量方案，首批覆盖高亮、预览和左右编辑字号/行高；新增字段只需同步 manifest、宿主读写、面板定义、验证和文档，不引入任意 CSS/脚本编辑。
+- 原因：满足长期调整和多 IDE 同步需求，同时保持实现边界、回滚和审计成本可控。
+- 验证方式：设置默认值断言、受控 CSS 值校验、面板字段源码检查、类型/Lint/构建、安全回归和文档门禁；真实界面持久化需在三 IDE 现场记录。
+- 残余风险：用户输入的 CSS 值仍需遵守文档中的合法值约束；未来新增字段不能绕过同一校验链路。
+
 ## 执行与验证记录
+
+### 2026-09-15：v1.9.98 集成与 `.7` 外观配置层（本轮）
+
+1. 已从原作者仓库核对并拉取 `v1.9.98`，确认其提交为 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4`，并以非快进合并保留上游来源边界。
+2. 已将上游外部路径/图片兼容变更合入，同时保留本 Fork 的工作区边界、图片扩展名约束和动态资源根限制。
+3. 已将 Markdown 外观配置收敛为数据驱动的受控面板，覆盖 `<mark>`、预览和左右编辑字号/行高；没有引入任意 CSS/脚本编辑器。
+4. 已补充设置持久化、CSS 值校验、设置面板分组、验证脚本和 README/架构/运维/版本记录文档。
+5. 本轮自动化检查已通过：类型检查、Lint（仅保留 2 个未修改上游 warning）、生产构建、`verify:security`、`verify:local-patch`、`verify:docs`；真实三 IDE 仍待现场验收。
+6. 已恢复安全/可靠性 Extension Host 测试源，并补齐 `@vscode/test-cli`、`@vscode/test-electron`；`npm test` 已下载 VS Code 1.137.0 测试运行时，但当前 macOS 执行环境启动 Code 进程以 SIGABRT 终止，故只把测试源编译和 CLI 配置记为通过，Extension Host 结果记为阻塞。
+7. 当前锁文件在线审计为 6 项（2 low、3 moderate、1 high、0 critical）；移除废弃的 `vscode-test` 直接依赖后，仅执行不带 `--force` 的兼容修复，high 项仍来自开发测试工具链。
+8. VSIX、最终提交 SHA 和 `personal/main` 远端 SHA 在提交与打包完成后回填；在回填前统一标记为“待补证”。
 
 ### 2026-08-31：已完成的关键步骤
 

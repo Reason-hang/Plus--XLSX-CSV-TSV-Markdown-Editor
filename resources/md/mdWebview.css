@@ -8,6 +8,8 @@
     --xlsx-viewer-md-mark-font-weight: inherit;
     --xlsx-viewer-md-mark-padding: 0 2px;
     --xlsx-viewer-md-mark-border-radius: 2px;
+    --xlsx-viewer-md-editor-font-size: 16px;
+    --xlsx-viewer-md-editor-line-height: 1.8;
 }
 
 body {
@@ -492,8 +494,8 @@ body.resizing * {
     outline: none;
     resize: none;
     font-family: var(--font-mono);
-    font-size: 13px;
-    line-height: 1.6;
+    font-size: var(--xlsx-viewer-md-editor-font-size);
+    line-height: var(--xlsx-viewer-md-editor-line-height);
     padding: 16px;
     background: var(--bg-color);
     color: var(--text-color);
