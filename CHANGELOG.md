@@ -2,6 +2,12 @@
 
 本仓库当前文档入口已统一收录在 docs/00-文档总索引.md；关键研发与测试决策记录在 docs/AI自主决策记录文档.md。历史版本条目保留原始变更语义，不作为当前功能事实。
 
+## 上游 v1.9.98 基线变更
+
+- 修复 Markdown 预览中的行内代码字号异常。
+- 修复外部磁盘、包含空格的目录和 Typora 笔记中的图片路径无法加载的问题。
+- 增加本地 HTML 图片标签的兼容处理；本 Fork 同时保留本地路径校验和 Webview 资源根限制。
+
 ## v1.9.98-local.6 - Markdown 重点高亮快捷键
 
 - 新增默认快捷键：macOS 为 `⌘ Command + ⌥ Option + ⇧ Shift + 3`，Windows/Linux 为 `Ctrl + Alt + Shift + 3`。

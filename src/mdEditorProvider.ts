@@ -340,15 +340,42 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                 }
             };
 
+            // Keep the initial resource allowlist narrow. Image folders outside the
+            // workspace are added only after the image path has passed the resolver's
+            // extension and workspace-boundary checks.
+            const initialRoots = [
+                vscode.Uri.joinPath(this.context.extensionUri, 'resources'),
+                vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
+                documentDirUri,
+                ...workspaceFolders
+            ];
+
+            const ensureResourceRoots = (targetUris: vscode.Uri[]) => {
+                try {
+                    const currentRoots = [...(webviewPanel.webview.options.localResourceRoots || [])];
+                    const toAdd: vscode.Uri[] = [];
+                    for (const targetUri of targetUris) {
+                        const targetDir = vscode.Uri.file(path.dirname(targetUri.fsPath));
+                        if (!currentRoots.some(root => root.fsPath === targetDir.fsPath) &&
+                            !toAdd.some(root => root.fsPath === targetDir.fsPath)) {
+                            toAdd.push(targetDir);
+                        }
+                    }
+                    if (toAdd.length > 0) {
+                        webviewPanel.webview.options = {
+                            ...webviewPanel.webview.options,
+                            localResourceRoots: [...currentRoots, ...toAdd]
+                        };
+                    }
+                } catch (error) {
+                    console.error('Failed to update Markdown image resource roots:', error);
+                }
+            };
+
             // Set up webview
             webviewPanel.webview.options = {
                 enableScripts: true,
-                localResourceRoots: [
-                    vscode.Uri.joinPath(this.context.extensionUri, 'resources'),
-                    vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
-                    documentDirUri,
-                    ...workspaceFolders
-                ]
+                localResourceRoots: initialRoots
             };
             webviewPanel.webview.html = this.getWebviewContent(webviewPanel);
             this.webviewPanels.add(webviewPanel);
@@ -401,6 +428,25 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                         try {
                             const requestedSources = Array.isArray(message.sources) ? message.sources : [];
                             const resolved: Record<string, string> = {};
+                            const targetFileUris: vscode.Uri[] = [];
+
+                            for (const source of requestedSources) {
+                                if (typeof source !== 'string') {
+                                    continue;
+                                }
+
+                                const trimmed = source.trim();
+                                if (!trimmed) {
+                                    continue;
+                                }
+
+                                const target = this.resolveMarkdownImageTarget(trimmed, document.uri);
+                                if (target) {
+                                    targetFileUris.push(target.targetUri);
+                                }
+                            }
+
+                            ensureResourceRoots(targetFileUris);
 
                             for (const source of requestedSources) {
                                 if (typeof source !== 'string') {
@@ -681,7 +727,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                             let lineNum: number | undefined;
                             const hashIndex = href.indexOf('#');
                             const anchor = hashIndex !== -1 ? href.substring(hashIndex + 1) : '';
-                            const hrefWithoutAnchor = hashIndex !== -1 ? href.substring(0, hashIndex) : href;
+                            let hrefWithoutAnchor = hashIndex !== -1 ? href.substring(0, hashIndex) : href;
 
                             if (
                                 !hrefWithoutAnchor ||
@@ -696,7 +742,11 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                             try {
                                 decodedHref = decodeURIComponent(hrefWithoutAnchor);
                             } catch {
-                                break;
+                                try {
+                                    decodedHref = decodeURI(hrefWithoutAnchor);
+                                } catch {
+                                    break;
+                                }
                             }
                             
                             const lineMatch = anchor.match(/^[Ll](\d+)$/);
@@ -1016,12 +1066,12 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
         </html>`;
     }
 
-    private resolveMarkdownImageUri(rawSource: string, documentUri: vscode.Uri, webview: vscode.Webview): string | null {
-        if (!rawSource || /^https?:\/\//i.test(rawSource) || /^data:/i.test(rawSource) || /^#/.test(rawSource)) {
+    private resolveMarkdownImageTarget(rawSource: string, documentUri: vscode.Uri): { targetUri: vscode.Uri; suffix: string } | null {
+        if (!rawSource || /^(?:https?:|data:|mailto:|#|javascript:)/i.test(rawSource)) {
             return null;
         }
 
-        // Keep query/hash on final URL after converting the base file URI.
+        // Keep query/hash on the final Webview URL after converting the file path.
         const match = rawSource.match(/^([^?#]*)([?#].*)?$/);
         const sourcePath = (match?.[1] || '').trim();
         const suffix = match?.[2] || '';
@@ -1029,42 +1079,65 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
             return null;
         }
 
-        const normalized = sourcePath.replace(/\\/g, '/');
-
+        let decoded = sourcePath;
         try {
-            if (/^file:/i.test(normalized)) {
-                const fileUri = vscode.Uri.parse(normalized);
-                const workspaceRoot = vscode.workspace.getWorkspaceFolder(documentUri)?.uri.fsPath || path.dirname(documentUri.fsPath);
-                if (fileUri.scheme !== 'file' || !isPathWithin(workspaceRoot, fileUri.fsPath)) {
-                    return null;
-                }
-                return webview.asWebviewUri(fileUri).toString() + suffix;
-            }
-
-            const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri)?.uri;
-            const resourceRoot = workspaceFolder?.fsPath || path.dirname(documentUri.fsPath);
-
-            if (/^\//.test(normalized) && workspaceFolder) {
-                const rel = normalized.replace(/^\/+/, '');
-                const absolute = path.join(workspaceFolder.fsPath, rel);
-                if (!isPathWithin(resourceRoot, absolute)) {
-                    return null;
-                }
-                return webview.asWebviewUri(vscode.Uri.file(absolute)).toString() + suffix;
-            }
-
-            if (path.isAbsolute(normalized)) {
-                if (!isPathWithin(resourceRoot, normalized)) {
-                    return null;
-                }
-                return webview.asWebviewUri(vscode.Uri.file(normalized)).toString() + suffix;
-            }
-
-            const absolute = path.resolve(path.dirname(documentUri.fsPath), normalized);
-            if (!isPathWithin(resourceRoot, absolute)) {
+            decoded = decodeURIComponent(sourcePath);
+        } catch {
+            try {
+                decoded = decodeURI(sourcePath);
+            } catch {
                 return null;
             }
-            return webview.asWebviewUri(vscode.Uri.file(absolute)).toString() + suffix;
+        }
+
+        try {
+            let absolute: string;
+            if (/^file:\/\//i.test(decoded)) {
+                const fileUri = vscode.Uri.parse(decoded);
+                if (fileUri.scheme !== 'file') {
+                    return null;
+                }
+                absolute = fileUri.fsPath;
+            } else if (/^[a-zA-Z]:[/\\]/.test(decoded)) {
+                absolute = path.normalize(decoded);
+            } else {
+                const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri)?.uri;
+                const normalized = decoded.replace(/\\/g, '/');
+                if (/^\//.test(normalized) && workspaceFolder) {
+                    absolute = path.join(workspaceFolder.fsPath, normalized.replace(/^\/+/, ''));
+                } else if (path.isAbsolute(normalized)) {
+                    absolute = path.normalize(normalized);
+                } else {
+                    absolute = path.resolve(path.dirname(documentUri.fsPath), normalized);
+                }
+            }
+
+            const workspaceRoot = vscode.workspace.getWorkspaceFolder(documentUri)?.uri.fsPath;
+            const documentDir = path.dirname(documentUri.fsPath);
+            const withinWorkspace = workspaceRoot ? isPathWithin(workspaceRoot, absolute) : false;
+            const withinDocument = isPathWithin(documentDir, absolute);
+            const imageExtension = /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(absolute);
+
+            // Relative/workspace images stay within the normal trust boundary. An
+            // absolute image outside it is allowed only for a known image type;
+            // arbitrary files such as HTML or scripts are never exposed.
+            if (!withinWorkspace && !withinDocument && !imageExtension) {
+                return null;
+            }
+
+            return { targetUri: vscode.Uri.file(absolute), suffix };
+        } catch {
+            return null;
+        }
+    }
+
+    private resolveMarkdownImageUri(rawSource: string, documentUri: vscode.Uri, webview: vscode.Webview): string | null {
+        const target = this.resolveMarkdownImageTarget(rawSource, documentUri);
+        if (!target) {
+            return null;
+        }
+        try {
+            return webview.asWebviewUri(target.targetUri).toString() + target.suffix;
         } catch {
             return null;
         }
