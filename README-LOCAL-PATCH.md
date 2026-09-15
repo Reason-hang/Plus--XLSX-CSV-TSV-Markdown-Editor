@@ -15,7 +15,7 @@
 
 本 Fork 是个人侧载用的补丁版，当前以原作者仓库 `v1.9.98`（提交 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4`）作为集成基线；`v1.9.97` 仅作为历史对照基线。当前版本为 `1.9.98-local.10`，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`，因此同一个 IDE 中会替换官方扩展，不能并存。
 
-`1.9.98-local.10` 当前锁文件在线审计为 0 项漏洞。运行时公式渲染继续直接使用 `katex`，移除了无自动修复的 `markdown-it-katex`；`.8` 同时移除 Markdown CSP 中无必要的 `unsafe-eval`，并以根级 overrides 升级开发链 `diff`、`serialize-javascript` 及 ExcelJS 使用的 `uuid`。`.9` 新增 h1-h6 标题统一配色配置并修复窄分栏格式工具栏裁切；`.10` 增加统一 Webview schema、payload/坐标/StyleStorage 容量限制、realpath/symlink 边界和本地 KaTeX CSS/字体。推送后已用 `git ls-remote personal refs/heads/main` 实时核对 GitHub `personal/main` 为 `408afdbfd95d305faaaab6243d18f8e4a481a550`。
+`1.9.98-local.10` 当前锁文件在线审计为 0 项漏洞。运行时公式渲染继续直接使用 `katex`，移除了无自动修复的 `markdown-it-katex`；`.8` 同时移除 Markdown CSP 中无必要的 `unsafe-eval`，并以根级 overrides 升级开发链 `diff`、`serialize-javascript` 及 ExcelJS 使用的 `uuid`。`.9` 新增 h1-h6 标题统一配色配置并修复窄分栏格式工具栏裁切；`.10` 增加统一 Webview schema、payload/坐标/StyleStorage 容量限制、realpath/symlink 边界和本地 KaTeX CSS/字体。最终文档证据提交前已用 `git ls-remote personal refs/heads/main` 实时核对 GitHub `personal/main` 为 `a60a917a282a6e14fc7523bf2bec0c015487e90f`；本次最终文档提交后的实时指针以交付记录中的最后一次命令输出为准。
 
 本次完整增强版的目标是：只维护一份 Less 主题源码，生成一份 CSS，同时供本扩展和 Markdown Preview Enhanced（MPE）使用；Markdown 正文只写语义明确的 `<mark>重点</mark>`，不再为每篇文档插入 `<style>` 或冗长的 `<span style="...">`。本版本同时收敛外部输入净化、保存前一致性校验、原子写入和版本历史上限。
 
@@ -157,7 +157,7 @@ npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.
 
 通过 IDE 的 `Extensions: Install from VSIX...` 安装；不要直接把解压目录复制到 `~/.vscode/extensions`、`~/.cursor/extensions` 或 `~/.antigravity/extensions`。安装后关闭该扩展的自动更新，避免被官方版本覆盖。
 
-当前 `.10` 发布候选包 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix` 的 SHA-256 为 `e3357cbcbc19cd8dbfbc87b8365e9704bae2f728d70fef48802ae80bd3cf6010`。VSIX 内文档不自引用自身哈希。
+当前 `.10` 发布候选包为 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix`，包外 SHA-256 为 `fd9ed64532dd6c9351b9671c69b55a4d2f9c7383630844efa2f526b93f31cf45`；VSIX 内文档不自引用自身哈希。
 
 ## 8. 验收、回退与维护成本
 

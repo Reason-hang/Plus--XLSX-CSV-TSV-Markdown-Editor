@@ -182,7 +182,7 @@ npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.
 4. 再按 `⌘ Command + ⇧ Shift + P`，执行 `Developer: Reload Window`。
 5. 关闭并重新打开 Markdown 文件，点击 `Split Edit`，确认右侧预览与表格样式。
 
-当前 `.10` 发布候选包 SHA-256：`e3357cbcbc19cd8dbfbc87b8365e9704bae2f728d70fef48802ae80bd3cf6010`。VSIX 内文档不自引用自身哈希。
+当前 `.10` 发布候选包为 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix`，包外 SHA-256 为 `fd9ed64532dd6c9351b9671c69b55a4d2f9c7383630844efa2f526b93f31cf45`；VSIX 内文档不自引用自身哈希。
 
 > 注意：当前补丁仍沿用上游扩展标识 `muhammad-ahmad.xlsx-viewer`，因此不能与原官方扩展并存。安装本地 VSIX 会替换同一 IDE 中的官方版；重新安装官方扩展即可回退。
 

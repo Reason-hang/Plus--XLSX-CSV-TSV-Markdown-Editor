@@ -258,10 +258,10 @@
 3. 增加 Markdown/Webview payload、表格编辑、StyleStorage 容量、realpath/symlink 边界和本地 KaTeX CSS/字体；补充 schema/symlink/StyleStorage 回归。
 4. 已执行 `code-audit` skill 并建立独立 `.10` 审计报告；按报告修复可选字段类型放行、列坐标轴上限、保存错误提示和新增 schema lint warning，补充对应回归断言。
 5. 已通过类型、编译、安全、本地补丁、主题和文档验证；`npm audit --json --package-lock-only` 为 0 项漏洞；生产构建和 VSIX 验包通过。
-6. 已生成 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix`，119 files、2.96 MB，SHA-256 为 `e3357cbcbc19cd8dbfbc87b8365e9704bae2f728d70fef48802ae80bd3cf6010`；包内已核对本地 KaTeX CSS/字体、`.10` manifest 和 `headingColor` 默认值，包内文档不自引用自身哈希。
+6. 已生成 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix`，119 files、3,100,499 bytes；包外 SHA-256 为 `fd9ed64532dd6c9351b9671c69b55a4d2f9c7383630844efa2f526b93f31cf45`，包内已核对本地 KaTeX CSS/字体、`.10` manifest 和 `headingColor` 默认值，包内文档不自引用自身哈希。
 7. `npm test` 的测试源编译和 CLI 配置通过，但 macOS Extension Host 仍以 SIGABRT 终止；Docker arm64 干净安装 615 个包且审计为 0 项，但本轮 Linux VS Code 运行时下载未进入测试进程，不能记为 Extension Host 通过。
 8. 已将最终 `.10` VSIX 安装到 VS Code、Cursor、Antigravity IDE，三个 CLI 均核对为 `muhammad-ahmad.xlsx-viewer@1.9.98-local.10`；窗口重载和真实交互验收仍需现场记录。
-9. 代码、资源和审计修复提交为 `6d2d44dbe5c7308ba6d4edd170b43530f1ec4991`；版本台账和审计证据回填提交为 `c7dedd2b8fb6aaee52121871403428d99dc36fdb`。推送后 `git ls-remote personal refs/heads/main` 返回 `408afdbfd95d305faaaab6243d18f8e4a481a550`，与本地 `HEAD`、`refs/remotes/personal/main` 一致。
+9. 代码、资源和审计修复提交为 `6d2d44dbe5c7308ba6d4edd170b43530f1ec4991`；版本台账和审计证据回填提交为 `c7dedd2b8fb6aaee52121871403428d99dc36fdb`。最终文档证据提交前 `git ls-remote personal refs/heads/main` 返回 `a60a917a282a6e14fc7523bf2bec0c015487e90f`，与当时的本地 `HEAD`、`refs/remotes/personal/main` 一致；本次最终文档提交后的实时指针以最后一次交付核对为准。
 
 ### 2026-09-15：`.7` 代码审计、`.8` 修复与 Docker 验收
 
