@@ -2,6 +2,24 @@
 
 本仓库当前文档入口已统一收录在 docs/00-文档总索引.md；关键研发与测试决策记录在 docs/AI自主决策记录文档.md。历史版本条目保留原始变更语义，不作为当前功能事实。
 
+## v1.9.98-local.10 - Webview 输入边界与本地资源治理
+
+- 新增共享 `src/shared/webviewMessageSchema.ts`，统一校验两个 Extension Host 的 Webview command、字段类型、数组条数、字符串字节数、Base64、坐标、合并面积和错误码。
+- 对 Markdown 正文、图片 sources、PDF Base64、反馈字段/请求体和表格 `edits`、`richEdits`、`styleEdits`、`operations` 设置上限；超限在文件、网络和状态副作用前拒绝，不静默截断。
+- 为 `StyleStorage` 增加 cells、merges 和序列化 JSON 字节上限；CSV/TSV 主文件写入前先验证元数据容量，拒绝时保留上一份有效 workspaceState。
+- 将 Markdown 图片和相对文件打开边界升级为 realpath containment；工作区外图片只能来自 `xlsxViewer.md.externalResourceRoots` 明确配置的可信根目录。
+- 将 KaTeX CSS 与字体随 VSIX 放入 `resources/md/katex`，移除 CDN stylesheet，并收紧 Markdown Webview 的 `style-src`/`font-src` 外部来源。
+- 增加 schema、symlink 和 StyleStorage 容量回归测试及安全脚本断言。
+- VSIX 版本升级为 `1.9.98-local.10`。
+
+## v1.9.98-local.9 - Markdown 标题配色与格式工具栏布局修复
+
+- 新增 `xlsxViewer.md.headingColor`，默认值为 `#569CD6`，统一作用于 Markdown 预览的 h1-h6。
+- 将标题颜色接入 Settings 面板、内置 Markdown CSS、外置 Less 主题和运行时 CSS 变量，避免外置主题覆盖配置值。
+- 修复窄分栏中格式工具栏按钮被 Flex 压缩、末尾工具组不可见的问题；工具栏允许换行，按钮和分隔线保持固定尺寸。
+- 明确 `.8` 未包含标题颜色配置和工具栏布局修复；本版本专门补齐该验收缺口。
+- VSIX 版本升级为 `1.9.98-local.9`。
+
 ## 上游 v1.9.98 基线变更
 
 - 修复 Markdown 预览中的行内代码字号异常。

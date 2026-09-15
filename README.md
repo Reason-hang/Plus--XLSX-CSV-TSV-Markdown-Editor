@@ -17,8 +17,8 @@
 
 项目以原作者仓库的 `v1.9.98`（提交 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4`）作为当前集成基线，并在此基础上保留本地安全修复和 Markdown 主题增强；`v1.9.97` 仍作为历史功能对比基线。主题增强用一份版本化 Less 主题生成单一 CSS，供本扩展与 Markdown Preview Enhanced（MPE）共同使用。
 
-> 安全提示：`1.9.98-local.8` 的锁文件在线审计结果为 0 项漏洞（0 low、0 moderate、0 high、0 critical）；运行时公式渲染继续使用 `katex` 且 `trust: false`。外部 KaTeX CSS CDN、绝对路径图片和 Webview 大批量消息仍属于受控残余风险，详见代码审计报告。
-> 当前版本是本地开发补丁 `1.9.98-local.8`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
+> 安全提示：`1.9.98-local.10` 当前锁文件在线审计为 0 项漏洞；Markdown Webview 已改为随 VSIX 加载本地 KaTeX CSS/字体，并对消息、Markdown、图片、PDF、反馈、表格编辑和 StyleStorage 设置边界。三个 IDE 的真实交互仍需现场验收。
+> 当前版本是本地开发补丁 `1.9.98-local.10`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
 
 ## 功能概览
 
@@ -63,6 +63,8 @@
   "xlsxViewer.md.markFontWeight": "inherit",
   "xlsxViewer.md.markPadding": "0 2px",
   "xlsxViewer.md.markBorderRadius": "2px",
+  "xlsxViewer.md.headingColor": "#569CD6",
+  "xlsxViewer.md.externalResourceRoots": [],
   "xlsxViewer.md.previewBackgroundColor": "",
   "xlsxViewer.md.previewTextColor": "",
   "xlsxViewer.md.previewFontSize": "15px",
@@ -110,28 +112,33 @@
 
 ### Markdown 左右视图字号配置
 
-`1.9.98-local.8` 支持分别配置 `Split Edit` 左侧编辑区和右侧预览区的字号、行高。在 IDE 的 `Preferences: Open User Settings (JSON)` 中加入：
+`1.9.98-local.10` 支持分别配置 `Split Edit` 左侧编辑区和右侧预览区的字号、行高，并新增统一控制 h1-h6 的标题颜色配置和可信外部图片根目录配置。在 IDE 的 `Preferences: Open User Settings (JSON)` 中加入：
 
 ```json
 {
   "xlsxViewer.md.editorFontSize": "16px",
   "xlsxViewer.md.editorLineHeight": "1.8",
   "xlsxViewer.md.previewFontSize": "17px",
-  "xlsxViewer.md.previewLineHeight": "1.8"
+  "xlsxViewer.md.previewLineHeight": "1.8",
+  "xlsxViewer.md.headingColor": "#569CD6",
+  "xlsxViewer.md.externalResourceRoots": []
 }
 ```
 
 修改后执行 `Developer: Reload Window`。字号配置写在 `settings.json`，不是 `keybindings.json`；不需要在 Markdown 正文中加入 `<style>`。
 
-也可以直接打开插件工具栏中的 `Settings` 面板，在 `Markdown appearance` 分组调整高亮、预览颜色、字号和行高。面板只暴露受控的外观字段，不提供任意 CSS/脚本编辑；空的预览颜色、字号或行高会继续跟随 IDE 主题。保存后当前 Webview 会立即应用，重载窗口后仍会从扩展设置恢复。
+也可以直接打开插件工具栏中的 `Settings` 面板，在 `Markdown appearance` 分组调整高亮、标题颜色、预览颜色、字号和行高。面板只暴露受控的外观字段，不提供任意 CSS/脚本编辑；空的预览颜色、字号或行高会继续跟随 IDE 主题。保存后当前 Webview 会立即应用，重载窗口后仍会从扩展设置恢复。
 
 ## 相对上游 v1.9.97 的增强
 
-当前本地包为 `1.9.98-local.8`；集成基线为上游 `v1.9.98`（`fd6ed727`），功能差异仍以历史上游 `v1.9.97`（`cb1c765`）作为完整对照，XLSX、CSV、TSV 原有编辑能力保持不变，新增与修复如下：
+当前本地包为 `1.9.98-local.10`；集成基线为上游 `v1.9.98`（`fd6ed727`），功能差异仍以历史上游 `v1.9.97`（`cb1c765`）作为完整对照，XLSX、CSV、TSV 原有编辑能力保持不变，新增与修复如下：
 
 | 模块 | 新增或修改 | 实际作用 |
 | --- | --- | --- |
-| Markdown 外观 | 全局 `<mark>` 配置、预览背景/文字/字号/行高配置 | 统一重点样式和阅读体验，无需逐篇写内联样式 |
+| Markdown 外观 | 全局 `<mark>` 配置、h1-h6 标题颜色、预览背景/文字/字号/行高配置 | 统一重点样式、标题层级和阅读体验，无需逐篇写内联样式 |
+| Markdown 工具栏 | 格式工具栏按钮保持固定尺寸并在窄分栏中自动换行 | 避免顶部格式按钮被 Flex 压缩或裁切，所有工具组仍可见 |
+| 输入边界治理 | 统一 Webview message schema、Markdown/PDF/反馈/图片 payload、表格编辑、坐标和 StyleStorage 容量限制 | 超限直接拒绝，拒绝前不写文件、不发网络请求、不更新状态 |
+| 本地资源与路径 | KaTeX CSS/字体随 VSIX 提供；Markdown 图片使用 realpath containment 和可信外部根目录 | 支持离线公式渲染，拒绝未授权 symlink 越界资源 |
 | 双栏排版 | 新增编辑区字号/行高设置 `xlsxViewer.md.editorFontSize`、`xlsxViewer.md.editorLineHeight` | 左侧编辑与右侧预览可分别调节，不影响 IDE 其他编辑器 |
 | 重点高亮快捷键 | `⌘⌥⇧3`（Windows/Linux：`Ctrl+Alt+Shift+3`）将选区写成 `<mark>…</mark>` | 编辑和预览同步高亮，文档可保存、可跨 IDE 阅读 |
 | 统一主题 | Less 单一主题源、外置 CSS、manifest 校验、自动监听刷新、MPE 适配 | 本插件与 MPE 可复用同一主题 |
@@ -164,16 +171,18 @@ npm run verify:local-patch
 npm run verify:theme-system
 npm run verify:docs
 npm test  # 首次运行会下载对应 VS Code Extension Host
-npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.8.vsix"
+npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix"
 ```
 
-手动安装或将旧版本替换为 `.8`：
+手动安装或将旧版本替换为 `.10`：
 
-1. 下载或选择 `muhammad-ahmad.xlsx-viewer-1.9.98-local.8.vsix`。
+1. 下载或选择 `muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix`。
 2. 在 VS Code、Cursor 或 Antigravity 按 `⌘ Command + ⇧ Shift + P`，执行 `Extensions: Install from VSIX...`。
-3. 选择该 VSIX；出现升级提示时确认。扩展 ID 相同且 `.8` 版本更高，无需先卸载旧版本。
+3. 选择该 VSIX；出现升级提示时确认。扩展 ID 相同且 `.10` 版本更高，无需先卸载旧版本。
 4. 再按 `⌘ Command + ⇧ Shift + P`，执行 `Developer: Reload Window`。
 5. 关闭并重新打开 Markdown 文件，点击 `Split Edit`，确认右侧预览与表格样式。
+
+当前 `.10` 发布候选包 SHA-256：`e3357cbcbc19cd8dbfbc87b8365e9704bae2f728d70fef48802ae80bd3cf6010`。VSIX 内文档不自引用自身哈希。
 
 > 注意：当前补丁仍沿用上游扩展标识 `muhammad-ahmad.xlsx-viewer`，因此不能与原官方扩展并存。安装本地 VSIX 会替换同一 IDE 中的官方版；重新安装官方扩展即可回退。
 

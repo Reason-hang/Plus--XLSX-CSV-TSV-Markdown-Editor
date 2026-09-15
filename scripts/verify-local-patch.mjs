@@ -10,6 +10,7 @@ const requiredDefaults = {
     'xlsxViewer.md.markFontWeight': 'inherit',
     'xlsxViewer.md.markPadding': '0 2px',
     'xlsxViewer.md.markBorderRadius': '2px',
+    'xlsxViewer.md.headingColor': '#569CD6',
     'xlsxViewer.md.previewBackgroundColor': '',
     'xlsxViewer.md.previewTextColor': '',
     'xlsxViewer.md.previewFontSize': '',
@@ -44,6 +45,10 @@ for (const [key, expectedDefault] of Object.entries(requiredDefaults)) {
     }
 }
 
+if (!Array.isArray(config['xlsxViewer.md.externalResourceRoots']?.default) || config['xlsxViewer.md.externalResourceRoots'].default.length !== 0) {
+    throw new Error('Markdown externalResourceRoots must default to an empty array.');
+}
+
 for (const [key, expectedDefault] of Object.entries(requiredThemeDefaults)) {
     if (config[key]?.default !== expectedDefault) {
         throw new Error(`Missing or changed Markdown theme setting: ${key}`);
@@ -54,6 +59,7 @@ const provider = readFileSync('src/mdEditorProvider.ts', 'utf8');
 const webview = readFileSync('src/webviews/md/mdWebview.ts', 'utf8');
 const css = readFileSync('resources/md/mdWebview.css', 'utf8');
 const sharedThemeCss = readFileSync('resources/shared/theme.css', 'utf8');
+const messageSchema = readFileSync('src/shared/webviewMessageSchema.ts', 'utf8');
 const requiredSourceMarkers = [
     'getMarkdownSettings',
     'applyMarkdownAppearance',
@@ -61,11 +67,17 @@ const requiredSourceMarkers = [
     'background-color: var(--xlsx-viewer-md-mark-background)',
     '--xlsx-viewer-md-editor-font-size',
     '--xlsx-viewer-md-editor-line-height',
+    '--xlsx-viewer-md-heading-color',
+    'flex-wrap: wrap;',
+    'flex: 0 0 28px;',
     'font-size: var(--xlsx-viewer-md-editor-font-size)',
     'line-height: var(--xlsx-viewer-md-editor-line-height)',
     'sanitizeAppearanceValue',
     'appearanceConfigKeys',
     'txtMarkBackgroundColor',
+    'txtHeadingColor',
+    'validateWebviewMessage',
+    'maxMessageBytes',
     'txtPreviewBackgroundColor',
     'txtEditorFontSize',
     'settings-section-title',
@@ -77,7 +89,7 @@ const requiredSourceMarkers = [
 ];
 
 for (const marker of requiredSourceMarkers) {
-    if (![provider, webview, css, sharedThemeCss].some(source => source.includes(marker))) {
+    if (![provider, webview, css, sharedThemeCss, messageSchema].some(source => source.includes(marker))) {
         throw new Error(`Local patch source marker is missing: ${marker}`);
     }
 }

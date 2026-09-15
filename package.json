@@ -2,7 +2,7 @@
     "name": "xlsx-viewer",
     "displayName": "XLSX, CSV, TSV & Markdown Editor",
     "description": "View and edit xlsx files with colors, fonts and styles (supporting in-table editing), and view and edit CSV, TSV & Markdown files in VS Code. This is an open-source project.",
-    "version": "1.9.98-local.8",
+    "version": "1.9.98-local.10",
     "publisher": "muhammad-ahmad",
     "engines": {
         "vscode": "^1.60.0"
@@ -353,6 +353,19 @@
                     "type": "string",
                     "default": "2px",
                     "description": "Global CSS border radius for <mark> text in the Markdown preview."
+                },
+                "xlsxViewer.md.headingColor": {
+                    "type": "string",
+                    "default": "#569CD6",
+                    "description": "Color for all Markdown preview heading levels (h1-h6)."
+                },
+                "xlsxViewer.md.externalResourceRoots": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Absolute trusted directories for Markdown images outside the workspace. Symlink targets are checked after realpath resolution."
                 },
                 "xlsxViewer.md.previewBackgroundColor": {
                     "type": "string",

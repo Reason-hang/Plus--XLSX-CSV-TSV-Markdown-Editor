@@ -149,6 +149,7 @@ type MarkdownAppearanceSettings = {
     markFontWeight?: string;
     markPadding?: string;
     markBorderRadius?: string;
+    headingColor?: string;
     previewBackgroundColor?: string;
     previewTextColor?: string;
     previewFontSize?: string;
@@ -184,6 +185,7 @@ function applyMarkdownAppearance(appearance?: MarkdownAppearanceSettings): void 
     rootStyle.setProperty('--xlsx-viewer-md-mark-font-weight', cssValueOrFallback(appearance?.markFontWeight, 'inherit'));
     rootStyle.setProperty('--xlsx-viewer-md-mark-padding', cssValueOrFallback(appearance?.markPadding, '0 2px'));
     rootStyle.setProperty('--xlsx-viewer-md-mark-border-radius', cssValueOrFallback(appearance?.markBorderRadius, '2px'));
+    rootStyle.setProperty('--xlsx-viewer-md-heading-color', cssValueOrFallback(appearance?.headingColor, '#569CD6'));
     setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-background', appearance?.previewBackgroundColor);
     setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-color', appearance?.previewTextColor);
     setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-font-size', appearance?.previewFontSize);
@@ -1868,6 +1870,7 @@ function applySettings(settings: any, persist = false) {
         ['txtMarkFontWeight', appearance.markFontWeight],
         ['txtMarkPadding', appearance.markPadding],
         ['txtMarkBorderRadius', appearance.markBorderRadius],
+        ['txtHeadingColor', appearance.headingColor],
         ['txtPreviewBackgroundColor', appearance.previewBackgroundColor],
         ['txtPreviewTextColor', appearance.previewTextColor],
         ['txtEditorFontSize', appearance.editorFontSize],
@@ -2058,6 +2061,17 @@ function initializeSettings() {
             onChange: (val: string) => appearanceValue('markBorderRadius', val)
         },
         {
+            id: 'txtHeadingColor',
+            label: 'Heading color',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.headingColor || '#569CD6',
+            placeholder: '#569CD6',
+            tooltip: 'Color for all Markdown preview heading levels h1-h6, for example #569CD6.',
+            onChange: (val: string) => appearanceValue('headingColor', val)
+        },
+        {
             id: 'txtPreviewBackgroundColor',
             label: 'Preview background',
             section: 'Markdown appearance',
@@ -2175,6 +2189,10 @@ window.addEventListener('message', (event) => {
     const m = event.data;
 
     switch (m.command) {
+        case 'webviewError':
+            showToast(m.message || '请求被拒绝：输入超出安全限制');
+            break;
+
         case 'initMarkdown':
             const loading = $('loadingIndicator');
             if (loading) loading.style.display = 'none';

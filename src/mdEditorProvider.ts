@@ -6,9 +6,10 @@ import type { IncomingMessage } from 'http';
 import { VERSION_HISTORY_MAX_ENTRIES, VERSION_HISTORY_MAX_TOTAL_BYTES, VERSION_HISTORY_RETENTION_MS, VERSION_HISTORY_SNAPSHOT_DEBOUNCE_MS, buildGroupedVersionHistoryItems, formatVersionHistoryTimestamp, getVersionHistoryDir, getVersionHistoryFile } from './shared/versionHistory';
 import { MarkdownThemeService } from './shared/markdownThemeService';
 import { isAllowedExternalUri } from './shared/externalUri';
-import { isPathWithin } from './shared/pathSafety';
+import { isPathWithinRealpath } from './shared/pathSafety';
 import { writeBufferFileAtomically, writeTextFileAtomically } from './shared/atomicFile';
 import { hashBuffer, hashFile } from './shared/fileFingerprint';
+import { validateWebviewMessage, WEBVIEW_LIMITS } from './shared/webviewMessageSchema';
 
 /**
  * Appearance values are user-configurable CSS property values, not arbitrary
@@ -97,6 +98,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                 markFontWeight: sanitizeAppearanceValue(cfg.get('md.markFontWeight', 'inherit'), 'inherit'),
                 markPadding: sanitizeAppearanceValue(cfg.get('md.markPadding', '0 2px'), '0 2px'),
                 markBorderRadius: sanitizeAppearanceValue(cfg.get('md.markBorderRadius', '2px'), '2px'),
+                headingColor: sanitizeAppearanceValue(cfg.get('md.headingColor', '#569CD6'), '#569CD6'),
                 previewBackgroundColor: sanitizeAppearanceValue(cfg.get('md.previewBackgroundColor', '')),
                 previewTextColor: sanitizeAppearanceValue(cfg.get('md.previewTextColor', '')),
                 previewFontSize: sanitizeAppearanceValue(cfg.get('md.previewFontSize', '')),
@@ -339,14 +341,23 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                 }, VERSION_HISTORY_SNAPSHOT_DEBOUNCE_MS);
             };
 
-            const buildInitMarkdownPayload = (content: string) => ({
-                command: 'initMarkdown',
-                content,
-                fileName: vscode.workspace.asRelativePath(document.uri),
-                documentUri: document.uri.toString(),
-                documentDirUri: documentDirUri.toString(),
-                workspaceFolderUri
-            });
+            const assertMarkdownPayloadSize = (content: string): void => {
+                if (Buffer.byteLength(content, 'utf8') > WEBVIEW_LIMITS.maxMarkdownContentBytes) {
+                    throw new Error(`Markdown 正文超过 ${WEBVIEW_LIMITS.maxMarkdownContentBytes} 字节限制，已拒绝发送到 Webview。`);
+                }
+            };
+
+            const buildInitMarkdownPayload = (content: string) => {
+                assertMarkdownPayloadSize(content);
+                return {
+                    command: 'initMarkdown',
+                    content,
+                    fileName: vscode.workspace.asRelativePath(document.uri),
+                    documentUri: document.uri.toString(),
+                    documentDirUri: documentDirUri.toString(),
+                    workspaceFolderUri
+                };
+            };
 
             const assertFileUnchanged = async () => {
                 if (!lastKnownFileHash) {
@@ -400,11 +411,22 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
 
             // Handle messages from webview
             webviewPanel.webview.onDidReceiveMessage(async message => {
+                const validation = validateWebviewMessage(message, 'markdown');
+                if (!validation.ok) {
+                    console.warn(`[Markdown Webview] ${validation.errorCode}: ${validation.message}`);
+                    void webviewPanel.webview.postMessage({
+                        command: 'webviewError',
+                        errorCode: validation.errorCode,
+                        message: validation.message
+                    });
+                    return;
+                }
                 switch (message.command) {
                     case 'webviewReady':
                         try {
                             // Read the markdown file
                             const content = await fs.promises.readFile(filePath, 'utf-8');
+                            assertMarkdownPayloadSize(content);
                             currentContent = content;
                             lastKnownFileHash = hashBuffer(Buffer.from(content, 'utf8'));
                             await pruneHistory();
@@ -458,7 +480,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                                     continue;
                                 }
 
-                                const target = this.resolveMarkdownImageTarget(trimmed, document.uri);
+                                const target = await this.resolveMarkdownImageTarget(trimmed, document.uri);
                                 if (target) {
                                     targetFileUris.push(target.targetUri);
                                 }
@@ -476,7 +498,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                                     continue;
                                 }
 
-                                const resolvedUri = this.resolveMarkdownImageUri(trimmed, document.uri, webviewPanel.webview);
+                                const resolvedUri = await this.resolveMarkdownImageUri(trimmed, document.uri, webviewPanel.webview);
                                 if (resolvedUri) {
                                     resolved[trimmed] = resolvedUri;
                                 }
@@ -517,6 +539,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                                 ['markFontWeight', 'md.markFontWeight'],
                                 ['markPadding', 'md.markPadding'],
                                 ['markBorderRadius', 'md.markBorderRadius'],
+                                ['headingColor', 'md.headingColor'],
                                 ['previewBackgroundColor', 'md.previewBackgroundColor'],
                                 ['previewTextColor', 'md.previewTextColor'],
                                 ['previewFontSize', 'md.previewFontSize'],
@@ -545,6 +568,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                     case 'requestFreshData':
                         try {
                             const content = await fs.promises.readFile(filePath, 'utf-8');
+                            assertMarkdownPayloadSize(content);
                             currentContent = content;
                             lastKnownFileHash = hashBuffer(Buffer.from(content, 'utf8'));
                             webviewPanel.webview.postMessage(buildInitMarkdownPayload(content));
@@ -615,6 +639,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                             }
 
                             const selectedContent = await readHistoryContent(picked.entry);
+                            assertMarkdownPayloadSize(selectedContent);
                             previewVersionId = picked.entry.id;
                             previewVersionTimestamp = picked.entry.timestamp;
                             previewVersionContent = selectedContent;
@@ -641,6 +666,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                                     }
 
                                     const content = await fs.promises.readFile(filePath, 'utf8');
+                                    assertMarkdownPayloadSize(content);
                                     currentContent = content;
                                     lastKnownFileHash = hashBuffer(Buffer.from(content, 'utf8'));
                                     previewVersionId = null;
@@ -677,6 +703,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                                     }
 
                                     const content = await readHistoryContent(entry);
+                                    assertMarkdownPayloadSize(content);
                                     const contentBytes = Buffer.from(content, 'utf8');
                                     await assertFileUnchanged();
                                     if (document.uri.scheme === 'file') {
@@ -796,7 +823,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                             // Resolve the relative path
                             const resolvedPath = path.resolve(currentDir, decodedHref);
                             const workspaceRoot = vscode.workspace.getWorkspaceFolder(currentDocUri)?.uri.fsPath || currentDir;
-                            if (!isPathWithin(workspaceRoot, resolvedPath)) {
+                            if (!await isPathWithinRealpath(workspaceRoot, resolvedPath)) {
                                 break;
                             }
                             const targetUri = vscode.Uri.file(resolvedPath);
@@ -946,6 +973,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                 }
                 try {
                     const content = await fs.promises.readFile(filePath, 'utf-8');
+                    assertMarkdownPayloadSize(content);
                     currentContent = content;
                     lastKnownFileHash = hashBuffer(Buffer.from(content, 'utf8'));
                     webviewPanel.webview.postMessage(buildInitMarkdownPayload(content));
@@ -979,6 +1007,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
         const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'md', 'mdWebview.css'));
         const themeUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'shared', 'theme.css'));
         const highlightUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'md', 'highlight.css'));
+        const katexStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'md', 'katex', 'katex.min.css'));
         const feedbackStyleUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'shared', 'feedback.css'));
         const cspSource = webview.cspSource;
         const nonce = randomBytes(16).toString('base64');
@@ -988,13 +1017,13 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
         <html lang="en">
         <head>
             <meta charset="UTF-8">
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} https: 'unsafe-inline'; font-src ${cspSource} https:; script-src ${cspSource} 'nonce-${nonce}';">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource} 'unsafe-inline'; font-src ${cspSource}; script-src ${cspSource} 'nonce-${nonce}';">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Markdown Viewer</title>
             <link href="${themeUri}" rel="stylesheet" />
             <link href="${styleUri}" rel="stylesheet" />
             <link href="${highlightUri}" rel="stylesheet" />
-            <link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.47/katex.min.css" rel="stylesheet" />
+            <link href="${katexStyleUri}" rel="stylesheet" />
             <link href="${feedbackStyleUri}" rel="stylesheet" />
             <script nonce="${nonce}">
                 window.viewImgUri = "${imgUri}";
@@ -1105,7 +1134,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
         </html>`;
     }
 
-    private resolveMarkdownImageTarget(rawSource: string, documentUri: vscode.Uri): { targetUri: vscode.Uri; suffix: string } | null {
+    private async resolveMarkdownImageTarget(rawSource: string, documentUri: vscode.Uri): Promise<{ targetUri: vscode.Uri; suffix: string } | null> {
         if (!rawSource || /^(?:https?:|data:|mailto:|#|javascript:)/i.test(rawSource)) {
             return null;
         }
@@ -1153,14 +1182,21 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
 
             const workspaceRoot = vscode.workspace.getWorkspaceFolder(documentUri)?.uri.fsPath;
             const documentDir = path.dirname(documentUri.fsPath);
-            const withinWorkspace = workspaceRoot ? isPathWithin(workspaceRoot, absolute) : false;
-            const withinDocument = isPathWithin(documentDir, absolute);
+            const withinWorkspace = workspaceRoot ? await isPathWithinRealpath(workspaceRoot, absolute) : false;
+            const withinDocument = await isPathWithinRealpath(documentDir, absolute);
+            const configuredExternalRoots = vscode.workspace
+                .getConfiguration('xlsxViewer')
+                .get<string[]>('md.externalResourceRoots', [])
+                .filter(root => typeof root === 'string' && path.isAbsolute(root));
+            const withinTrustedExternalRoot = await Promise.all(
+                configuredExternalRoots.map(root => isPathWithinRealpath(root, absolute))
+            ).then(results => results.some(Boolean));
             const imageExtension = /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(absolute);
 
             // Relative/workspace images stay within the normal trust boundary. An
             // absolute image outside it is allowed only for a known image type;
             // arbitrary files such as HTML or scripts are never exposed.
-            if (!withinWorkspace && !withinDocument && !imageExtension) {
+            if (!withinWorkspace && !withinDocument && (!imageExtension || !withinTrustedExternalRoot)) {
                 return null;
             }
 
@@ -1170,8 +1206,8 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
         }
     }
 
-    private resolveMarkdownImageUri(rawSource: string, documentUri: vscode.Uri, webview: vscode.Webview): string | null {
-        const target = this.resolveMarkdownImageTarget(rawSource, documentUri);
+    private async resolveMarkdownImageUri(rawSource: string, documentUri: vscode.Uri, webview: vscode.Webview): Promise<string | null> {
+        const target = await this.resolveMarkdownImageTarget(rawSource, documentUri);
         if (!target) {
             return null;
         }

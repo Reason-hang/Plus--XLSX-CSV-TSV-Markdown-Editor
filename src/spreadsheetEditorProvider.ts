@@ -12,6 +12,7 @@ import { isAllowedExternalUri } from './shared/externalUri';
 import { getCellValueForDisplay } from './spreadsheet/cellValue';
 import { writeBufferFileAtomically, writeFileAtomically } from './shared/atomicFile';
 import { hashBuffer, hashFile } from './shared/fileFingerprint';
+import { validateWebviewMessage } from './shared/webviewMessageSchema';
 
 function borderEditToCssValue(enabled: boolean, style?: string, color?: string): string {
     if (!enabled) return '';
@@ -997,13 +998,6 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 nextStyles[key] = nextStyle;
             }
 
-            await assertFileUnchanged();
-            await writeTabularFile(document.uri.fsPath, {
-                sheets: [{ name: 'Sheet1', rows }]
-            }, sourceType);
-            lastKnownFileHash = await hashFile(filePath);
-            lastSaveTime = Date.now();
-
             const finalCells: Record<string, { style?: any; control?: any }> = {};
             for (const key of new Set([...Object.keys(nextStyles), ...Object.keys(nextControls)])) {
                 const style = nextStyles[key];
@@ -1022,6 +1016,20 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     finalCells[key] = entry;
                 }
             }
+
+            // Validate metadata before changing the user file. saveMetadata repeats
+            // the check so direct callers are protected as well.
+            this.styleStorage.assertMetadataWithinLimits({
+                cells: finalCells,
+                merges
+            });
+
+            await assertFileUnchanged();
+            await writeTabularFile(document.uri.fsPath, {
+                sheets: [{ name: 'Sheet1', rows }]
+            }, sourceType);
+            lastKnownFileHash = await hashFile(filePath);
+            lastSaveTime = Date.now();
 
             await this.styleStorage.saveMetadata(document.uri, {
                 cells: finalCells,
@@ -1509,6 +1517,16 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
         // Listen for messages
         webview.onDidReceiveMessage(async message => {
+            const validation = validateWebviewMessage(message, 'spreadsheet');
+            if (!validation.ok) {
+                console.warn(`[Spreadsheet Webview] ${validation.errorCode}: ${validation.message}`);
+                void webview.postMessage({
+                    command: 'webviewError',
+                    errorCode: validation.errorCode,
+                    message: validation.message
+                });
+                return;
+            }
             if (message?.command === 'webviewReady') {
                 isWebviewReady = true;
                 await pruneHistory();
@@ -2376,7 +2394,19 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     }
                     try { webview.postMessage({ command: 'saveResult', ok: true, isAutosave }); } catch { }
                 } catch (err) {
-                    try { webview.postMessage({ command: 'saveResult', ok: false, error: String(err), isAutosave: !!message?.isAutosave }); } catch { }
+                    const error = err instanceof Error ? err.message : String(err);
+                    const errorCode = err && typeof err === 'object' && 'code' in err
+                        ? String((err as { code?: unknown }).code || '')
+                        : undefined;
+                    try {
+                        webview.postMessage({
+                            command: 'saveResult',
+                            ok: false,
+                            error,
+                            errorCode: errorCode || undefined,
+                            isAutosave: !!message?.isAutosave
+                        });
+                    } catch { }
                 } finally {
                     isSaving = false;
                 }

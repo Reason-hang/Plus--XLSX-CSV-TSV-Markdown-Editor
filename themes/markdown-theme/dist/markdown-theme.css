@@ -16,7 +16,7 @@
 .markdown-preview h4,
 .markdown-preview h5,
 .markdown-preview h6 {
-  color: #f2f2f2;
+  color: var(--xlsx-viewer-md-heading-color, #569cd6);
   line-height: 1.35;
   font-weight: 700;
 }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, symlinkSync, rmSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,6 +14,8 @@ const markdownItKatex = require(path.join(projectRoot, 'out/webviews/md/markdown
 const { renderCellContent, createXlsxRowHtml } = require(path.join(projectRoot, 'out/webviews/spreadsheet/components/spreadsheetRenderComponent.js'));
 const { isAllowedExternalUri } = require(path.join(projectRoot, 'out/shared/externalUri.js'));
 const { isPathWithin } = require(path.join(projectRoot, 'out/shared/pathSafety.js'));
+const { isPathWithinRealpath } = require(path.join(projectRoot, 'out/shared/pathSafety.js'));
+const { validateWebviewMessage, WEBVIEW_LIMITS } = require(path.join(projectRoot, 'out/shared/webviewMessageSchema.js'));
 
 const workbook = new Excel.Workbook();
 const worksheet = workbook.addWorksheet('Security Test');
@@ -68,6 +71,63 @@ assert.equal(isAllowedExternalUri('vscode://file/etc/passwd'), false);
 assert.equal(isPathWithin('/workspace/project', '/workspace/project/notes/a.md'), true);
 assert.equal(isPathWithin('/workspace/project', '/workspace/project/../secret.txt'), false);
 
+assert.equal(validateWebviewMessage({ command: 'webviewReady' }, 'markdown').ok, true);
+assert.equal(validateWebviewMessage({ command: 'unknown' }, 'markdown').ok, false);
+assert.equal(validateWebviewMessage({ command: 'saveMarkdown', text: 'x'.repeat(WEBVIEW_LIMITS.maxMarkdownContentBytes + 1) }, 'markdown').ok, false);
+assert.equal(validateWebviewMessage({
+    command: 'saveXlsxEdits',
+    sheetIndex: 0,
+    edits: [{ row: 0, col: 1, value: 'bad' }],
+    richEdits: [],
+    styleEdits: [],
+    operations: [],
+    isAutosave: false
+}, 'spreadsheet').ok, false);
+assert.equal(validateWebviewMessage({
+    command: 'saveXlsxEdits',
+    sheetIndex: 0,
+    edits: [],
+    richEdits: [],
+    styleEdits: [],
+    operations: [{ type: 'insertControl', row: 1, col: 1, controlType: 'checkbox', defaultValue: 123 }],
+    isAutosave: false
+}, 'spreadsheet').ok, false);
+assert.equal(validateWebviewMessage({
+    command: 'saveXlsxEdits',
+    sheetIndex: 0,
+    edits: [],
+    richEdits: [],
+    styleEdits: [],
+    operations: [{ type: 'insertColumnRight', index: 16_385 }],
+    isAutosave: false
+}, 'spreadsheet').ok, false);
+assert.equal(validateWebviewMessage({
+    command: 'saveXlsxEdits',
+    sheetIndex: 0,
+    edits: [],
+    richEdits: [],
+    styleEdits: [],
+    operations: [{ type: 'mergeRange', startRow: 1, startCol: 1, endRow: 2000, endCol: 2000 }],
+    isAutosave: false
+}, 'spreadsheet').ok, false);
+
+if (process.platform !== 'win32') {
+    const pathTestRoot = mkdtempSync(path.join(os.tmpdir(), 'xlsx-viewer-realpath-'));
+    const inside = path.join(pathTestRoot, 'inside');
+    const outside = mkdtempSync(path.join(os.tmpdir(), 'xlsx-viewer-realpath-outside-'));
+    const link = path.join(pathTestRoot, 'linked');
+    try {
+        const fs = await import('node:fs');
+        fs.mkdirSync(inside);
+        symlinkSync(outside, link, 'dir');
+        assert.equal(await isPathWithinRealpath(pathTestRoot, inside), true);
+        assert.equal(await isPathWithinRealpath(pathTestRoot, path.join(link, 'secret.txt')), false);
+    } finally {
+        rmSync(pathTestRoot, { recursive: true, force: true });
+        rmSync(outside, { recursive: true, force: true });
+    }
+}
+
 const mdProviderSource = readFileSync(path.join(projectRoot, 'src/mdEditorProvider.ts'), 'utf8');
 const mdWebviewSource = readFileSync(path.join(projectRoot, 'src/webviews/md/mdWebview.ts'), 'utf8');
 const spreadsheetProviderSource = readFileSync(path.join(projectRoot, 'src/spreadsheetEditorProvider.ts'), 'utf8');
@@ -75,6 +135,7 @@ const spreadsheetShellSource = readFileSync(path.join(projectRoot, 'src/spreadsh
 const conversionSource = readFileSync(path.join(projectRoot, 'src/shared/fileConversionService.ts'), 'utf8');
 const themeSource = readFileSync(path.join(projectRoot, 'src/shared/markdownThemeService.ts'), 'utf8');
 const markdownItKatexSource = readFileSync(path.join(projectRoot, 'src/webviews/md/markdownItKatex.ts'), 'utf8');
+const messageSchemaSource = readFileSync(path.join(projectRoot, 'src/shared/webviewMessageSchema.ts'), 'utf8');
 
 const mathMarkdown = new MarkdownIt({ html: true });
 mathMarkdown.use(markdownItKatex);
@@ -96,8 +157,8 @@ assert.match(mdProviderSource, /imageExtension/);
 assert.match(mdProviderSource, /ensureResourceRoots/);
 assert.match(mdProviderSource, /migrateLegacyHistory[\s\S]*VERSION_HISTORY_MAX_ENTRIES/);
 assert.match(mdProviderSource, /case 'restoreVersion'[\s\S]*?await assertFileUnchanged\(\)/);
-assert.match(mdProviderSource, /KaTeX\/0\.16\.47\/katex\.min\.css/);
-assert.doesNotMatch(mdProviderSource, /KaTeX\/0\.6\.0\/katex\.min\.css/);
+assert.match(mdProviderSource, /katexStyleUri/);
+assert.doesNotMatch(mdProviderSource, /cdnjs\.cloudflare\.com\/ajax\/libs\/KaTeX/);
 assert.match(spreadsheetProviderSource, /message\?\.command === 'restoreVersion'[\s\S]*?await assertFileUnchanged\(\)/);
 assert.doesNotMatch(conversionSource, /csvSeparatorOverride/);
 assert.match(conversionSource, /replace\(\/\^\\uFEFF\//);
@@ -113,5 +174,12 @@ assert.ok(mdWebviewSource.includes('class="language-${escapeHtmlAttr(langName)}'
 assert.doesNotMatch(mdWebviewSource, /markdown-it-katex/, 'the vulnerable markdown-it-katex package must not be used');
 assert.match(markdownItKatexSource, /katex\.renderToString/);
 assert.match(markdownItKatexSource, /trust: false/);
+assert.match(messageSchemaSource, /maxMessageBytes/);
+assert.match(messageSchemaSource, /maxEdits/);
+assert.match(messageSchemaSource, /validateWebviewMessage/);
+assert.match(readFileSync(path.join(projectRoot, 'src/shared/styleStorageService.ts'), 'utf8'), /STYLE_STORAGE_LIMITS/);
+assert.match(readFileSync(path.join(projectRoot, 'src/spreadsheetEditorProvider.ts'), 'utf8'), /assertMetadataWithinLimits/);
+assert.match(readFileSync(path.join(projectRoot, 'src/shared/pathSafety.ts'), 'utf8'), /isPathWithinRealpath/);
+assert.ok(readFileSync(path.join(projectRoot, 'resources/md/katex/katex.min.css'), 'utf8').includes('KaTeX_Main-Regular'), 'bundled KaTeX CSS must be present');
 
 console.log('安全与回归测试：PASS');

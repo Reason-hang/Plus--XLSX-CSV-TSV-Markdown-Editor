@@ -26,10 +26,10 @@
 | 分支 | codex/release-1.9.98-local.7（本地修复工作分支，已推送到 `personal/main`） |
 | 上游集成基线 | v1.9.98，`fd6ed727bf241f6fd2c1380a609e7c728e108ee4` |
 | 历史对比基线 | v1.9.97，`cb1c765c0da95d49ecd50ec3b0e26ca7ca185ebb` |
-| 当前版本 | 1.9.98-local.8 |
+| 当前版本 | 1.9.98-local.10 |
 | 远端发布目标 | personal/main |
 | 主题实现 | 已有外置 CSS、manifest、监听、回退和 MPE 适配基础 |
-| 真实 IDE 验收 | 本次不自动安装，需人工执行 |
+| 真实 IDE 验收 | `.10` 仍需在 VS Code、Cursor、Antigravity 中人工执行 |
 
 ## 决策记录
 
@@ -37,7 +37,7 @@
 
 - 风险等级：中
 - 背景：历史对话和旧交付物中存在不同版本、不同主题方案和不同路径描述。
-- 证据：当前 package.json 版本已升级为 1.9.98-local.8；src/shared/markdownThemeService.ts 已包含外置 CSS 加载、路径校验、manifest 提示、监听和失败回退；审计修复还增加了渲染净化、保存一致性校验、原子写入和依赖覆盖。
+- 证据：当前 package.json 版本已升级为 1.9.98-local.10；src/shared/markdownThemeService.ts 已包含外置 CSS 加载、路径校验、manifest 提示、监听和失败回退；审计修复还增加了渲染净化、保存一致性校验、原子写入和依赖覆盖；`.10` 新增共享 Webview schema、realpath 检查、StyleStorage 容量校验和本地 KaTeX 资源。
 - 候选方案：直接沿用旧文档；以当前工作区重新核对；只整理用户提供的方案文本。
 - 决策：以当前工作区源码、package.json、生成物、测试命令和 Git 现场为准；旧描述只有在当前代码仍支持时才保留。
 - 执行范围：所有 README、docs、主题说明和测试说明。
@@ -215,6 +215,28 @@
 - 验证方式：设置默认值断言、受控 CSS 值校验、面板字段源码检查、类型/Lint/构建、安全回归和文档门禁；真实界面持久化需在三 IDE 现场记录。
 - 残余风险：用户输入的 CSS 值仍需遵守文档中的合法值约束；未来新增字段不能绕过同一校验链路。
 
+### D-020：将用户验收发现的标题配色和工具栏布局缺口收敛为 `.9` 最小修复
+
+- 风险等级：中
+- 背景：`.8` 已实现 Markdown 外观配置，但未包含“不同 Markdown 层级标题默认预设为蓝色”的配置项；真实验收截图同时显示格式工具栏在窄分栏中被 Flex 压缩并裁切，末尾工具组不可见。
+- 证据：当前 `package.json` 没有 `xlsxViewer.md.headingColor`；`tokens.less` 将 h1-h6 统一设为浅色；`resources/md/mdWebview.css` 的 `.formatting-toolbar` 采用单行横向滚动且 `.fmt-btn` 未声明不可收缩。
+- 候选方案：只调整截图中的颜色和宽度；新增完整主题/设置链路并修复工具栏布局；重做整个 Markdown 工具栏。
+- 决策：采用第二种方案。新增一个受控的 `xlsxViewer.md.headingColor`，默认 `#569CD6`，贯通设置、运行时变量、内置 CSS 和外置 Less 主题；只调整格式工具栏的换行和 Flex 收缩规则，不重做按钮功能。
+- 原因：标题颜色需要在三个配置入口（用户设置、Settings 面板、外置主题）保持同一事实源；工具栏问题是布局约束缺失，不是按钮逻辑缺失。最小修复可以覆盖当前验收场景，避免扩大到 XLSX/CSV/TSV 代码。
+- 执行范围：package.json、package-lock.json、src/mdEditorProvider.ts、src/webviews/md/mdWebview.ts、resources/md/mdWebview.css、themes/markdown-theme/partials、验证脚本、README/CHANGELOG/开发/测试/版本文档。
+- 验证方式：类型检查、主题构建、源码回归、文档验证、VSIX manifest/文件范围核对；三个 IDE 需分别重载窗口后确认 h1-h6、标题颜色持久化和工具栏完整可见。
+- 偏差：`.8` 文档曾将 Markdown 外观配置描述为已完整覆盖，但实际缺少标题颜色字段；本次明确记录为需求遗漏并升级版本，不把截图或静态 CSS 检查冒充真实 IDE 验收。
+- 残余风险：工具栏多行布局的最终高度、窄分栏交互和外置主题覆盖关系仍需三个 IDE 现场确认；六项审计 P2 仍未在 `.9` 中展开治理。
+
+### D-021：按用户要求在研发完成后执行独立 code-audit，再进入安装和发布
+
+- 风险等级：高
+- 背景：本轮不仅要实现六项输入边界和本地资源治理，还要求在研发完成后进行独立代码审计，审计发现的问题必须先修复并重新验证，不能把实现者自检当作最终质量门禁。
+- 决策：先完成 `.10` 研发实现和自动化测试，再按 `code-audit` skill 的整仓范围、调用链、边界、安全、性能、架构、数据一致性清单生成 Markdown 审计报告；审计问题进入修复循环，修复后重新跑全部门禁，最后才安装三个 IDE 并尝试推送。
+- 约束：`code-audit` skill 的审计阶段只产出报告；用户明确授权“审计后修复”，因此修复动作在审计报告生成后单独执行，不把审计过程和代码修改混在同一证据中。
+- 验证方式：审计报告必须包含文件路径、行号、调用链、触发条件、风险等级、验证方式和未覆盖范围；修复后检查报告问题已关闭或明确保留；类型、Lint、测试源、`verify:security`、`verify:local-patch`、`verify:theme-system`、`verify:docs`、主题构建、VSIX manifest/文件范围/SHA-256 均重新执行。
+- 残余风险：真实 VS Code、Cursor、Antigravity GUI、断网 KaTeX、跨平台 Windows symlink 仍需用户现场补证；GitHub 实时远端指针受当前 DNS 影响，不能用本地 remote-tracking ref 代替。
+
 ### D-019：对 `.7` 进行代码审计后升级为 `.8`，优先关闭可验证的安全与测试门禁问题
 
 - 风险等级：中高
@@ -228,6 +250,17 @@
 - 残余风险：外部 KaTeX CSS CDN、绝对路径图片和 Webview 大批量消息的边界治理未纳入 `.8` 的行为改造，已在审计报告中列为 P2 后续事项。
 
 ## 执行与验证记录
+
+### 2026-09-15：`.10` 输入边界治理、代码审计修复与发布候选
+
+1. 复核截图与当前源码，确认标题颜色配置在 `.8` 的 package、provider、Webview 和主题链路中均缺失；确认工具栏显示问题来自 Flex 收缩与单行溢出约束，并已由 `.9` 修复。
+2. 新增共享 `webviewMessageSchema.ts`，覆盖 Markdown/Spreadsheet 两个 Extension Host 消息入口、字段类型、条数、字节、Base64、坐标、合并面积和错误码。
+3. 增加 Markdown/Webview payload、表格编辑、StyleStorage 容量、realpath/symlink 边界和本地 KaTeX CSS/字体；补充 schema/symlink/StyleStorage 回归。
+4. 已执行 `code-audit` skill 并建立独立 `.10` 审计报告；按报告修复可选字段类型放行、列坐标轴上限、保存错误提示和新增 schema lint warning，补充对应回归断言。
+5. 已通过类型、编译、安全、本地补丁、主题和文档验证；`npm audit --json --package-lock-only` 为 0 项漏洞；生产构建和 VSIX 验包通过。
+6. 已生成 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix`，119 files、2.96 MB，SHA-256 为 `e3357cbcbc19cd8dbfbc87b8365e9704bae2f728d70fef48802ae80bd3cf6010`；包内已核对本地 KaTeX CSS/字体、`.10` manifest 和 `headingColor` 默认值，包内文档不自引用自身哈希。
+7. `npm test` 的测试源编译和 CLI 配置通过，但 macOS Extension Host 仍以 SIGABRT 终止；Docker arm64 干净安装 615 个包且审计为 0 项，但本轮 Linux VS Code 运行时下载未进入测试进程，不能记为 Extension Host 通过。
+8. 三个 IDE 的安装、窗口重载和真实交互验收仍需现场记录；GitHub 实时 `personal/main` 指针仍因 DNS 无法解析而未核实。
 
 ### 2026-09-15：`.7` 代码审计、`.8` 修复与 Docker 验收
 

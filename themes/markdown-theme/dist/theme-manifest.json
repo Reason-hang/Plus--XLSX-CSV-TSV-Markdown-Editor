@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-15T02:42:48.248Z",
+  "generatedAt": "2026-09-15T13:15:18.312Z",
   "source": "theme.less",
   "cssFile": "dist/markdown-theme.css",
-  "sha256": "07cdf56e65aa4c170e1c1a467c1aa407816a20765d91b5c8210a0c21266b319a",
+  "sha256": "f793ee827bdcca9fb0c47e64f4e5a2c4e844a85f807745ae8223c22c813ff059",
   "dependencies": [
     "partials/content.less",
     "partials/toc.less",

@@ -52,7 +52,10 @@ for (const file of markdownFiles) {
   if (source.includes('/Users/lizhihang/Documents/Codex')) {
     failures.push('文档包含本机绝对路径：' + relativeFile);
   }
-  if (source.includes('1.9.98-local.1')) {
+  // 使用版本边界，避免把当前的 `1.9.98-local.10` 误判为旧的
+  // `1.9.98-local.1`。历史版本记录允许保留旧版本号，当前事实由各文档的
+  // current/version 表格字段和发布记录核对。
+  if (/1\.9\.98-local\.1(?:\D|$)/.test(source)) {
     failures.push('文档残留旧补丁版本：' + relativeFile);
   }
 
