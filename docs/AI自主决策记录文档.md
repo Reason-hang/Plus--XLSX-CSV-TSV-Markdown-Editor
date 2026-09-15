@@ -236,7 +236,7 @@
 3. 移除 Markdown CSP 中的 `unsafe-eval`，并加入 `verify:security` 回归断言。
 4. 修正 `.vscode-test.mjs` 的 Mocha UI 与 headless 启动参数；Docker Node 24 + Linux arm64 + Xvfb 中 Extension Host 测试 4 项通过。
 5. 宿主 macOS 直接启动同版本 Code 仍以 SIGABRT/134 退出，记录为本机环境限制；没有将该限制写成代码测试失败或“已在宿主通过”。
-6. 当前修复版本为 `1.9.98-local.8`，代码与文档修复提交为 `2178c410e4698119b7a987aa9dc66f4926ad17d1`，版本台账/审计证据提交为 `fbaf3f735b9ec3f151976267aacf1ff27092e77c`；VSIX 已完成生产构建与验包，SHA-256 为 `ca6c171baf6e64570dddc57201f2fbccb739ddf0eaeb6ba6f8d65ae16a88a79a`；最终推送提交为 `31e09d532c632677682fbdc10b6c8c89056ac865`，并已核对 `personal/main`。
+6. 当前修复版本为 `1.9.98-local.8`，代码与文档修复提交为 `2178c410e4698119b7a987aa9dc66f4926ad17d1`，版本台账/审计证据提交为 `fbaf3f735b9ec3f151976267aacf1ff27092e77c`；VSIX 已完成生产构建与验包，SHA-256 为 `ca6c171baf6e64570dddc57201f2fbccb739ddf0eaeb6ba6f8d65ae16a88a79a`；最终文档提交链已正常推送，并已核对 `personal/main`。
 
 ### 2026-09-15：v1.9.98 集成与 `.7` 外观配置层（本轮）
 
