@@ -235,7 +235,7 @@
 - 决策：先完成 `.10` 研发实现和自动化测试，再按 `code-audit` skill 的整仓范围、调用链、边界、安全、性能、架构、数据一致性清单生成 Markdown 审计报告；审计问题进入修复循环，修复后重新跑全部门禁，最后才安装三个 IDE 并尝试推送。
 - 约束：`code-audit` skill 的审计阶段只产出报告；用户明确授权“审计后修复”，因此修复动作在审计报告生成后单独执行，不把审计过程和代码修改混在同一证据中。
 - 验证方式：审计报告必须包含文件路径、行号、调用链、触发条件、风险等级、验证方式和未覆盖范围；修复后检查报告问题已关闭或明确保留；类型、Lint、测试源、`verify:security`、`verify:local-patch`、`verify:theme-system`、`verify:docs`、主题构建、VSIX manifest/文件范围/SHA-256 均重新执行。
-- 残余风险：真实 VS Code、Cursor、Antigravity GUI、断网 KaTeX、跨平台 Windows symlink 仍需用户现场补证；GitHub 实时远端指针受当前 DNS 影响，不能用本地 remote-tracking ref 代替。
+- 残余风险：真实 VS Code、Cursor、Antigravity GUI、断网 KaTeX、跨平台 Windows symlink 仍需用户现场补证；GitHub 实时远端指针已在推送后实时核对，但该证据只代表核对时刻。
 
 ### D-019：对 `.7` 进行代码审计后升级为 `.8`，优先关闭可验证的安全与测试门禁问题
 
@@ -261,7 +261,7 @@
 6. 已生成 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix`，119 files、2.96 MB，SHA-256 为 `e3357cbcbc19cd8dbfbc87b8365e9704bae2f728d70fef48802ae80bd3cf6010`；包内已核对本地 KaTeX CSS/字体、`.10` manifest 和 `headingColor` 默认值，包内文档不自引用自身哈希。
 7. `npm test` 的测试源编译和 CLI 配置通过，但 macOS Extension Host 仍以 SIGABRT 终止；Docker arm64 干净安装 615 个包且审计为 0 项，但本轮 Linux VS Code 运行时下载未进入测试进程，不能记为 Extension Host 通过。
 8. 已将最终 `.10` VSIX 安装到 VS Code、Cursor、Antigravity IDE，三个 CLI 均核对为 `muhammad-ahmad.xlsx-viewer@1.9.98-local.10`；窗口重载和真实交互验收仍需现场记录。
-9. 代码、资源和审计修复提交为 `6d2d44dbe5c7308ba6d4edd170b43530f1ec4991`；版本台账和审计证据回填提交为 `c7dedd2b8fb6aaee52121871403428d99dc36fdb`。GitHub 实时 `personal/main` 指针仍因 DNS 无法解析而未核实。
+9. 代码、资源和审计修复提交为 `6d2d44dbe5c7308ba6d4edd170b43530f1ec4991`；版本台账和审计证据回填提交为 `c7dedd2b8fb6aaee52121871403428d99dc36fdb`。推送后 `git ls-remote personal refs/heads/main` 返回 `408afdbfd95d305faaaab6243d18f8e4a481a550`，与本地 `HEAD`、`refs/remotes/personal/main` 一致。
 
 ### 2026-09-15：`.7` 代码审计、`.8` 修复与 Docker 验收
 
