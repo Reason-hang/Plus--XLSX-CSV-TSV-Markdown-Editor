@@ -226,7 +226,7 @@
 5. 本轮自动化检查已通过：类型检查、Lint（仅保留 2 个未修改上游 warning）、生产构建、`verify:security`、`verify:local-patch`、`verify:docs`；真实三 IDE 仍待现场验收。
 6. 已恢复安全/可靠性 Extension Host 测试源，并补齐 `@vscode/test-cli`、`@vscode/test-electron`；`npm test` 已下载 VS Code 1.137.0 测试运行时，但当前 macOS 执行环境启动 Code 进程以 SIGABRT 终止，故只把测试源编译和 CLI 配置记为通过，Extension Host 结果记为阻塞。
 7. 当前锁文件在线审计为 6 项（2 low、3 moderate、1 high、0 critical）；移除废弃的 `vscode-test` 直接依赖后，仅执行不带 `--force` 的兼容修复，high 项仍来自开发测试工具链。
-8. VSIX、最终提交 SHA 和 `personal/main` 远端 SHA 在提交与打包完成后回填；在回填前统一标记为“待补证”。
+8. 已生成 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.7.vsix`，SHA-256 为 `4aa6e05167154f07fccb1645b90c0f9ddd36b2c837c891c26c0399be067045f9`；代码与文档交付提交为 `2f69e73bde2db15366b83132ef2d0d366d72d198`。推送后以 `git ls-remote personal refs/heads/main` 核对远端最终提交，不使用强制推送。
 
 ### 2026-08-31：已完成的关键步骤
 
