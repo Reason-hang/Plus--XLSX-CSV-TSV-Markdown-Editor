@@ -153,8 +153,8 @@ export function createXlsxSettingsDefinitions(
     return [
         {
             id: 'chkHeaderRow',
-            label: 'Header Row',
-            tooltip: 'Treat the first worksheet row as a header row.',
+            label: '首行作为表头',
+            tooltip: '将工作表第一行视为表头。',
             onChange: (val: boolean) => {
                 const settings = getSettings();
                 applyAndPersist({
@@ -166,8 +166,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkStickyHeader',
-            label: 'Sticky Header',
-            tooltip: 'Keep the header row visible while scrolling vertically.',
+            label: '固定表头',
+            tooltip: '垂直滚动时保持表头可见。',
             onChange: (val: boolean) => {
                 const settings = getSettings();
                 applyAndPersist({ stickyHeader: settings.firstRowIsHeader ? val : false });
@@ -176,8 +176,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkStickyToolbar',
-            label: 'Sticky Toolbar',
-            tooltip: 'Keep the top toolbar pinned while scrolling the worksheet.',
+            label: '固定工具栏',
+            tooltip: '滚动工作表时将顶部工具栏固定。',
             onChange: (val: boolean) => {
                 applyAndPersist({ stickyToolbar: val });
             },
@@ -185,8 +185,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkAllowInteractiveControlsOutsideEditMode',
-            label: 'Edit Checkbox/Dropdown Without Edit Mode',
-            tooltip: 'Allow checkbox toggles and dropdown selection without entering table edit mode.',
+            label: '无需编辑模式即可操作复选框/下拉列表',
+            tooltip: '无需进入表格编辑模式，即可切换复选框和选择下拉列表。',
             onChange: (val: boolean) => {
                 applyAndPersist({ allowInteractiveControlsOutsideEditMode: val });
             },
@@ -194,8 +194,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkHyperlinkPreview',
-            label: 'Hyperlink Preview',
-            tooltip: 'Show hover actions for hyperlinks, including Open in browser and Copy link.',
+            label: '超链接预览',
+            tooltip: '显示超链接悬停操作，包括在浏览器中打开和复制链接。',
             onChange: (val: boolean) => {
                 applyAndPersist({ hyperlinkPreview: val });
             },
@@ -203,8 +203,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkSpaciousCells',
-            label: 'Spacious Cells',
-            tooltip: 'Increase row height and padding for better readability.',
+            label: '宽松单元格',
+            tooltip: '增加行高和内边距，提升可读性。',
             onChange: (val: boolean) => {
                 applyAndPersist({ spaciousCells: val });
             },
@@ -212,8 +212,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkTextWrap',
-            label: 'Text Wrap',
-            tooltip: 'Enable text wrapping in cells by default.',
+            label: '单元格自动换行',
+            tooltip: '默认启用单元格内文字自动换行。',
             onChange: (val: boolean) => {
                 applyAndPersist({ textWrap: val });
             },
@@ -221,8 +221,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkMergeWarningEnabled',
-            label: 'Merge Warning Popup',
-            tooltip: 'Ask for confirmation before merging cells because only the top-left value is preserved.',
+            label: '合并警告弹窗',
+            tooltip: '合并单元格前请求确认，因为仅保留左上角单元格的值。',
             onChange: (val: boolean) => {
                 applyAndPersist({ mergeWarningEnabled: val });
             },
@@ -230,8 +230,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkAutoSave',
-            label: 'Autosave',
-            tooltip: 'Automatically save edits shortly after text, checkbox, dropdown, or formatting changes.',
+            label: '自动保存',
+            tooltip: '文字、复选框、下拉列表或格式变更后自动保存。',
             onChange: (val: boolean) => {
                 applyAndPersist({ autoSave: val });
             },
@@ -239,8 +239,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'radioAutoSaveAll',
-            label: 'Autosave all changes',
-            tooltip: 'Autosave any pending worksheet edits, including text, formatting, and structure operations.',
+            label: '自动保存全部更改',
+            tooltip: '自动保存所有待处理的工作表修改，包括文字、格式和结构操作。',
             className: 'setting-dependent setting-autosave-dependent',
             inputType: 'radio',
             groupName: 'xlsxAutoSaveMode',
@@ -252,8 +252,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'radioAutoSaveControlsOnly',
-            label: 'Autosave only checkbox/dropdown',
-            tooltip: 'Autosave triggers only from checkbox or dropdown changes.',
+            label: '仅自动保存复选框/下拉列表',
+            tooltip: '仅在复选框或下拉列表变更时触发自动保存。',
             className: 'setting-dependent setting-autosave-dependent',
             inputType: 'radio',
             groupName: 'xlsxAutoSaveMode',
@@ -265,8 +265,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkShowManualSavePopup',
-            label: 'Manual Save Popup (Autosave Off)',
-            tooltip: 'When Autosave is off, show a short reminder popup to save manually after edits.',
+            label: '手动保存提醒（关闭自动保存时）',
+            tooltip: '关闭自动保存时，编辑后显示简短的手动保存提醒。',
             className: 'setting-dependent setting-autosave-dependent',
             onChange: (val: boolean) => {
                 applyAndPersist({ showManualSavePopup: val });
@@ -275,8 +275,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkShowPopups',
-            label: 'Show Notification Popups',
-            tooltip: 'Show popup notifications (such as saved/autosaved toasts) during editor usage. Uncheck to disable.',
+            label: '显示通知弹窗',
+            tooltip: '编辑时显示通知弹窗（例如保存/自动保存提示）；取消勾选可关闭。',
             onChange: (val: boolean) => {
                 applyAndPersist({ showPopups: val });
             },
@@ -284,8 +284,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'radioCsvSeparatorComma',
-            label: 'CSV Delimiter: Comma (,)',
-            tooltip: 'Use comma as separator when saving CSV files.',
+            label: 'CSV 分隔符：逗号（,）',
+            tooltip: '保存 CSV 文件时使用逗号作为分隔符。',
             inputType: 'radio',
             groupName: 'csvSeparatorMode',
             value: ',',
@@ -296,8 +296,8 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'radioCsvSeparatorSemicolon',
-            label: 'CSV Delimiter: Semicolon (;)',
-            tooltip: 'Use semicolon as separator when saving CSV files.',
+            label: 'CSV 分隔符：分号（;）',
+            tooltip: '保存 CSV 文件时使用分号作为分隔符。',
             inputType: 'radio',
             groupName: 'csvSeparatorMode',
             value: ';',

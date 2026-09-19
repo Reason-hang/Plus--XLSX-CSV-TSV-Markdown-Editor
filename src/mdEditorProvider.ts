@@ -1037,56 +1037,56 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
 
             <div id="formattingToolbar" class="formatting-toolbar hidden">
                 <div class="fmt-group">
-                    <button class="fmt-btn" data-format="bold" title="Bold (Ctrl+B)"></button>
-                    <button class="fmt-btn" data-format="italic" title="Italic (Ctrl+I)"></button>
-                    <button class="fmt-btn" data-format="strikethrough" title="Strikethrough (Ctrl+Shift+X)"></button>
-                    <button class="fmt-btn" data-format="inlineCode" title="Inline Code (Ctrl+E)"></button>
+                    <button class="fmt-btn" data-format="bold" title="加粗（Ctrl+B）"></button>
+                    <button class="fmt-btn" data-format="italic" title="斜体（Ctrl+I）"></button>
+                    <button class="fmt-btn" data-format="strikethrough" title="删除线（Ctrl+Shift+X）"></button>
+                    <button class="fmt-btn" data-format="inlineCode" title="行内代码（Ctrl+E）"></button>
                 </div>
                 <div class="fmt-sep"></div>
                 <div class="fmt-group">
-                    <button class="fmt-btn" data-format="heading1" title="Heading 1 (Ctrl+1)"></button>
-                    <button class="fmt-btn" data-format="heading2" title="Heading 2 (Ctrl+2)"></button>
-                    <button class="fmt-btn" data-format="heading3" title="Heading 3 (Ctrl+3)"></button>
+                    <button class="fmt-btn" data-format="heading1" title="一级标题（Ctrl+1）"></button>
+                    <button class="fmt-btn" data-format="heading2" title="二级标题（Ctrl+2）"></button>
+                    <button class="fmt-btn" data-format="heading3" title="三级标题（Ctrl+3）"></button>
                 </div>
                 <div class="fmt-sep"></div>
                 <div class="fmt-group">
-                    <button class="fmt-btn" data-format="bulletList" title="Bullet List (Ctrl+L)"></button>
-                    <button class="fmt-btn" data-format="orderedList" title="Ordered List (Ctrl+Shift+L)"></button>
-                    <button class="fmt-btn" data-format="checkbox" title="Checkbox List"></button>
-                    <button class="fmt-btn" data-format="blockquote" title="Blockquote"></button>
+                    <button class="fmt-btn" data-format="bulletList" title="无序列表（Ctrl+L）"></button>
+                    <button class="fmt-btn" data-format="orderedList" title="有序列表（Ctrl+Shift+L）"></button>
+                    <button class="fmt-btn" data-format="checkbox" title="任务列表"></button>
+                    <button class="fmt-btn" data-format="blockquote" title="引用块"></button>
                 </div>
                 <div class="fmt-sep"></div>
                 <div class="fmt-group">
-                    <button class="fmt-btn" data-format="link" title="Insert Link (Ctrl+K)"></button>
-                    <button class="fmt-btn" data-format="image" title="Insert Image"></button>
-                    <button class="fmt-btn" data-format="table" title="Insert Table"></button>
-                    <button class="fmt-btn" data-format="tableAddRowBelow" title="Add Row Below (WYSIWYG table)"></button>
-                    <button class="fmt-btn" data-format="tableRemoveRow" title="Remove Current Row (WYSIWYG table)"></button>
-                    <button class="fmt-btn" data-format="tableAddColumnRight" title="Add Column Right (WYSIWYG table)"></button>
-                    <button class="fmt-btn" data-format="tableRemoveColumn" title="Remove Current Column (WYSIWYG table)"></button>
-                    <button class="fmt-btn" data-format="codeBlock" title="Code Block (Ctrl+Shift+E)"></button>
-                    <button class="fmt-btn" data-format="hr" title="Horizontal Rule"></button>
+                    <button class="fmt-btn" data-format="link" title="插入链接（Ctrl+K）"></button>
+                    <button class="fmt-btn" data-format="image" title="插入图片"></button>
+                    <button class="fmt-btn" data-format="table" title="插入表格"></button>
+                    <button class="fmt-btn" data-format="tableAddRowBelow" title="在下方添加行（所见即所得表格）"></button>
+                    <button class="fmt-btn" data-format="tableRemoveRow" title="删除当前行（所见即所得表格）"></button>
+                    <button class="fmt-btn" data-format="tableAddColumnRight" title="在右侧添加列（所见即所得表格）"></button>
+                    <button class="fmt-btn" data-format="tableRemoveColumn" title="删除当前列（所见即所得表格）"></button>
+                    <button class="fmt-btn" data-format="codeBlock" title="代码块（Ctrl+Shift+E）"></button>
+                    <button class="fmt-btn" data-format="hr" title="水平分隔线"></button>
                 </div>
                 <div class="fmt-sep"></div>
                 <div class="fmt-group">
-                    <button class="fmt-btn" data-format="undo" title="Undo (Ctrl+Z)"></button>
-                    <button class="fmt-btn" data-format="redo" title="Redo (Ctrl+Shift+Z)"></button>
+                    <button class="fmt-btn" data-format="undo" title="撤销（Ctrl+Z）"></button>
+                    <button class="fmt-btn" data-format="redo" title="重做（Ctrl+Shift+Z）"></button>
                 </div>
                 <div class="fmt-sep"></div>
                 <div class="fmt-group">
-                    <button class="fmt-btn" data-format="duplicateLine" title="Duplicate Line (Ctrl+Shift+D)"></button>
-                    <button class="fmt-btn" data-format="deleteLine" title="Delete Line (Ctrl+Shift+K)"></button>
-                    <button class="fmt-btn" data-format="moveUp" title="Move Line Up (Alt+&#x2191;)"></button>
-                    <button class="fmt-btn" data-format="moveDown" title="Move Line Down (Alt+&#x2193;)"></button>
+                    <button class="fmt-btn" data-format="duplicateLine" title="复制当前行（Ctrl+Shift+D）"></button>
+                    <button class="fmt-btn" data-format="deleteLine" title="删除当前行（Ctrl+Shift+K）"></button>
+                    <button class="fmt-btn" data-format="moveUp" title="上移当前行（Alt+&#x2191;）"></button>
+                    <button class="fmt-btn" data-format="moveDown" title="下移当前行（Alt+&#x2193;）"></button>
                 </div>
                 <div class="fmt-sep"></div>
                 <div class="fmt-group">
-                    <button class="fmt-btn" data-format="uppercase" title="UPPERCASE (Ctrl+Shift+U)"></button>
-                    <button class="fmt-btn" data-format="lowercase" title="lowercase (Ctrl+U)"></button>
-                    <button class="fmt-btn" data-format="titlecase" title="Title Case"></button>
-                    <button class="fmt-btn" data-format="sortLines" title="Sort Lines A-Z"></button>
-                    <button class="fmt-btn" data-format="trimWhitespace" title="Trim Trailing Whitespace"></button>
-                    <button class="fmt-btn" data-format="jumpToLine" title="Go to Line (Ctrl+G)"></button>
+                    <button class="fmt-btn" data-format="uppercase" title="转换为大写（Ctrl+Shift+U）"></button>
+                    <button class="fmt-btn" data-format="lowercase" title="转换为小写（Ctrl+U）"></button>
+                    <button class="fmt-btn" data-format="titlecase" title="转换为标题格式"></button>
+                    <button class="fmt-btn" data-format="sortLines" title="按 A-Z 排序行"></button>
+                    <button class="fmt-btn" data-format="trimWhitespace" title="删除行尾空白"></button>
+                    <button class="fmt-btn" data-format="jumpToLine" title="跳转到指定行（Ctrl+G）"></button>
                 </div>
             </div>
 
@@ -1094,9 +1094,9 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                 <div class="search-bar">
                     <input type="text" id="searchInput" class="search-input" placeholder="Search in preview..." autocomplete="off" />
                     <span id="searchCount" class="search-count"></span>
-                    <button id="searchPrev" class="search-nav-btn" title="Previous (Shift+Enter)">&#9650;</button>
-                    <button id="searchNext" class="search-nav-btn" title="Next (Enter)">&#9660;</button>
-                    <button id="searchClose" class="search-close-btn" title="Close (Esc)">&times;</button>
+                    <button id="searchPrev" class="search-nav-btn" title="上一个（Shift+Enter）">&#9650;</button>
+                    <button id="searchNext" class="search-nav-btn" title="下一个（Enter）">&#9660;</button>
+                    <button id="searchClose" class="search-close-btn" title="关闭（Esc）">&times;</button>
                 </div>
             </div>
 
@@ -1106,7 +1106,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                     <aside id="tocPanel" class="toc-panel md-sidebar-toc hidden" aria-label="Outline">
                         <div class="toc-header">
                             <span class="toc-title">Outline</span>
-                            <button id="tocCloseButton" class="toc-close" title="Hide outline">x</button>
+                            <button id="tocCloseButton" class="toc-close" title="隐藏大纲">x</button>
                         </div>
                         <div id="tocBody" class="toc-body"></div>
                     </aside>

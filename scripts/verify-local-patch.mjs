@@ -112,6 +112,27 @@ for (const marker of requiredStickyToolbarMarkers) {
     }
 }
 
+const requiredSimplifiedChineseUiMarkers = [
+    'label: \'分栏编辑\'',
+    'tooltip: \'左右分栏编辑 Markdown\'',
+    'section: \'Markdown 外观\'',
+    'label: \'固定工具栏\'',
+    'label: \'首行作为表头\'',
+    'tooltip: \'工作表设置\'',
+    '提示：',
+    'title="加粗（Ctrl+B）"'
+];
+
+for (const marker of requiredSimplifiedChineseUiMarkers) {
+    if (![provider, webview, toolbarManager, messageSchema,
+        readFileSync('src/webviews/spreadsheet/components/spreadsheetToolbarComponent.ts', 'utf8'),
+        readFileSync('src/webviews/spreadsheet/components/spreadsheetSettingsComponent.ts', 'utf8'),
+        readFileSync('src/webviews/shared/infoTooltip.ts', 'utf8')
+    ].some(source => source.includes(marker))) {
+        throw new Error(`Simplified Chinese core UI marker is missing: ${marker}`);
+    }
+}
+
 const requiredThemeFallbacks = [
     'color: var(--xlsx-viewer-md-preview-color, var(--text-color));',
     'background: var(--xlsx-viewer-md-preview-background, var(--bg-color));',

@@ -82,7 +82,7 @@ export class SettingsManager {
             html += `<label class="setting-item tooltip${extraClass}">${labelContent}<span class="tooltiptext hidden">${safeTooltip}</span></label>`;
         });
         html += '</div>';
-        html += `<button id="${cancelId}" class="toggle-button" title="Close">Close</button>`;
+        html += `<button id="${cancelId}" class="toggle-button" title="关闭">关闭</button>`;
         
         panel.innerHTML = html;
         container.appendChild(panel);

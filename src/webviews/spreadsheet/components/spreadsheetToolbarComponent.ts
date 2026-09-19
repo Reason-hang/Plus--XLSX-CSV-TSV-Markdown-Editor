@@ -32,15 +32,15 @@ export function createXlsxToolbarButtons(options: CreateXlsxToolbarButtonsOption
         {
             id: 'enableAsDefaultButton',
             icon: Icons.Zap,
-            label: 'Set as Default',
-            tooltip: 'Make Spreadsheet Viewer the default editor for XLSX files',
+            label: '设为默认',
+            tooltip: '将表格查看器设为 XLSX 文件的默认编辑器',
             hidden: true,
             onClick: options.onEnableAsDefault
         },
         {
             id: 'refreshButton',
             icon: Icons.Refresh,
-            tooltip: 'Reload file from disk',
+            tooltip: '从磁盘重新加载文件',
             cls: 'icon-only',
             onClick: options.onRefresh
         },
@@ -48,28 +48,28 @@ export function createXlsxToolbarButtons(options: CreateXlsxToolbarButtonsOption
             id: 'toggleRtlButton',
             icon: Icons.TextDirection,
             label: 'RTL',
-            tooltip: 'Toggle Right-to-Left (RTL) / LTR text direction',
+            tooltip: '切换从右到左（RTL）/ 从左到右（LTR）文字方向',
             onClick: options.onToggleRtl
         },
         {
             id: 'editFileButton',
             icon: Icons.EditFile,
-            label: 'Edit File',
-            tooltip: 'Open this file in the default text editor',
+            label: '编辑文件',
+            tooltip: '在默认文本编辑器中打开此文件',
             hidden: true,
             onClick: options.onEditFile
         },
         {
             id: 'toggleTableEditButton',
             icon: '',
-            label: 'Edit Table',
-            tooltip: 'Edit XLSX directly in the table (text only)',
+            label: '编辑表格',
+            tooltip: '直接在表格中编辑 XLSX（仅文本）',
             onClick: options.onToggleTableEdit
         },
         {
             id: 'saveTableEditsButton',
             icon: Icons.Save,
-            tooltip: 'Save table edits',
+            tooltip: '保存表格编辑',
             cls: 'icon-only',
             hidden: true,
             onClick: options.onSaveTableEdits
@@ -77,8 +77,8 @@ export function createXlsxToolbarButtons(options: CreateXlsxToolbarButtonsOption
         {
             id: 'cancelTableEditsButton',
             icon: Icons.Cancel,
-            label: 'Cancel',
-            tooltip: 'Cancel table edits',
+            label: '取消',
+            tooltip: '取消表格编辑',
             hidden: true,
             onClick: options.onCancelTableEdits
         },
@@ -86,7 +86,7 @@ export function createXlsxToolbarButtons(options: CreateXlsxToolbarButtonsOption
             id: 'formatBoldButton',
             icon: Icons.Bold,
             cls: 'icon-only',
-            tooltip: 'Bold selected text (Ctrl/Cmd+B)',
+            tooltip: '将选中文字加粗（Ctrl/Cmd+B）',
             hidden: true,
             onClick: options.onFormatBold
         },
@@ -94,7 +94,7 @@ export function createXlsxToolbarButtons(options: CreateXlsxToolbarButtonsOption
             id: 'formatItalicButton',
             icon: Icons.Italic,
             cls: 'icon-only',
-            tooltip: 'Italic selected text (Ctrl/Cmd+I)',
+            tooltip: '将选中文字设为斜体（Ctrl/Cmd+I）',
             hidden: true,
             onClick: options.onFormatItalic
         },
@@ -102,7 +102,7 @@ export function createXlsxToolbarButtons(options: CreateXlsxToolbarButtonsOption
             id: 'formatTextColorButton',
             icon: options.textColorIcon,
             cls: 'icon-only',
-            tooltip: 'Set selected text color',
+            tooltip: '设置选中文字颜色',
             hidden: true,
             onClick: options.onFormatTextColor
         },
@@ -110,77 +110,77 @@ export function createXlsxToolbarButtons(options: CreateXlsxToolbarButtonsOption
             id: 'formatBackgroundColorButton',
             icon: options.bgColorIcon,
             cls: 'icon-only',
-            tooltip: 'Set selected text background color',
+            tooltip: '设置选中文字背景色',
             hidden: true,
             onClick: options.onFormatBackgroundColor
         },
         {
             id: 'toggleExpandButton',
             icon: Icons.Expand,
-            label: 'Expand',
-            tooltip: 'Toggle Column Widths (Default / Expand All)',
+            label: '展开',
+            tooltip: '切换列宽（默认 / 全部展开）',
             onClick: options.onToggleExpand
         },
         {
             id: 'findButton',
             icon: Icons.Search,
             cls: 'icon-only',
-            tooltip: 'Find in sheet (Ctrl/Cmd+F)',
+            tooltip: '在工作表中查找（Ctrl/Cmd+F）',
             onClick: options.onFind
         },
         {
             id: 'togglePlainViewButton',
             icon: Icons.Table,
-            label: 'Plain',
-            tooltip: 'Toggle Plain View (removes all styling)',
+            label: '纯文本',
+            tooltip: '切换纯文本视图（移除所有样式）',
             onClick: options.onTogglePlainView
         },
         {
             id: 'openSettingsButton',
             icon: Icons.Settings,
-            tooltip: 'Sheet Settings',
+            tooltip: '工作表设置',
             cls: 'icon-only',
             onClick: options.onOpenSettings
         },
         {
             id: 'insertControlButton',
             icon: Icons.TableInsert,
-            label: 'Insert',
-            tooltip: 'Insert checkbox, dropdown, rating, or date into selected cells',
+            label: '插入',
+            tooltip: '向选中单元格插入复选框、下拉列表、评分或日期',
             hidden: true,
             onClick: options.onInsertControl
         },
         {
             id: 'toggleBackgroundButton',
             icon: Icons.ThemeLight + Icons.ThemeDark + Icons.ThemeVSCode,
-            tooltip: 'Toggle Theme',
+            tooltip: '切换主题',
             onClick: options.onToggleBackground
         },
         {
             id: 'versionHistoryButton',
             icon: Icons.VersionHistory,
-            tooltip: 'Version history',
+            tooltip: '版本历史',
             cls: 'icon-only',
             onClick: options.onVersionHistory
         },
         {
             id: 'convertFileButton',
             icon: Icons.Convert,
-            label: 'Convert',
-            tooltip: 'Convert this file to CSV, TSV, or XLSX',
+            label: '转换',
+            tooltip: '将此文件转换为 CSV、TSV 或 XLSX',
             onClick: options.onConvertFile
         },
         {
             id: 'projectsButton',
             icon: Icons.Link,
-            tooltip: 'Other Projects',
+            tooltip: '其他项目',
             cls: 'icon-only',
             onClick: options.onProjects
         },
         {
             id: 'helpButton',
             icon: Icons.Help,
-            tooltip: 'Help & Feedback',
+            tooltip: '帮助与反馈',
             cls: 'icon-only',
             onClick: options.onHelp
         }

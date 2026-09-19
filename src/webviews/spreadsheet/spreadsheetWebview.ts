@@ -354,14 +354,14 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         popup.innerHTML = `
             <div class="border-popup-title">Borders</div>
             <div class="border-popup-grid">
-                <button type="button" class="border-mode-btn" data-mode="all" title="All borders">All</button>
-                <button type="button" class="border-mode-btn" data-mode="outside" title="Outside borders">Outer</button>
-                <button type="button" class="border-mode-btn" data-mode="inner" title="Inner borders">Inner</button>
-                <button type="button" class="border-mode-btn" data-mode="top" title="Top border">Top</button>
-                <button type="button" class="border-mode-btn" data-mode="right" title="Right border">Right</button>
-                <button type="button" class="border-mode-btn" data-mode="bottom" title="Bottom border">Bottom</button>
-                <button type="button" class="border-mode-btn" data-mode="left" title="Left border">Left</button>
-                <button type="button" class="border-mode-btn" data-mode="none" title="No borders">None</button>
+                <button type="button" class="border-mode-btn" data-mode="all" title="所有边框">全部</button>
+                <button type="button" class="border-mode-btn" data-mode="outside" title="外侧边框">外侧</button>
+                <button type="button" class="border-mode-btn" data-mode="inner" title="内部边框">内部</button>
+                <button type="button" class="border-mode-btn" data-mode="top" title="上边框">上</button>
+                <button type="button" class="border-mode-btn" data-mode="right" title="右边框">右</button>
+                <button type="button" class="border-mode-btn" data-mode="bottom" title="下边框">下</button>
+                <button type="button" class="border-mode-btn" data-mode="left" title="左边框">左</button>
+                <button type="button" class="border-mode-btn" data-mode="none" title="无边框">无</button>
             </div>
         `;
 
@@ -480,7 +480,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                 <div class="dropdown-options-message">Enter one option per line. Comma, semicolon, and | are also supported.</div>
                 <textarea id="dropdownOptionsInput" class="dropdown-options-input" spellcheck="false"></textarea>
                 <div class="dropdown-options-actions">
-                    <button id="dropdownOptionsCancel" type="button" class="toggle-button">Cancel</button>
+                    <button id="dropdownOptionsCancel" type="button" class="toggle-button">取消</button>
                     <button id="dropdownOptionsInsert" type="button" class="toggle-button">Insert</button>
                 </div>
             </div>
@@ -894,7 +894,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                     Don't show this for 1 day
                 </label>
                 <div class="merge-warning-actions">
-                    <button id="mergeWarningCancel" type="button" class="toggle-button">Cancel</button>
+                    <button id="mergeWarningCancel" type="button" class="toggle-button">取消</button>
                     <button id="mergeWarningConfirm" type="button" class="toggle-button">Merge</button>
                 </div>
             </div>
@@ -3951,14 +3951,14 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         strip.className = 'xlsx-edit-strip hidden';
         strip.innerHTML = `
             <div class="edit-strip-group">
-                <select id="editFontFamily" class="edit-strip-select" title="Font family">
+                <select id="editFontFamily" class="edit-strip-select" title="字体">
                     <option value="Arial">Arial</option>
                     <option value="Roboto">Roboto</option>
                     <option value="Inter">Inter</option>
                     <option value="Times New Roman">Times New Roman</option>
                     <option value="Consolas">Consolas</option>
                 </select>
-                <select id="editFontSize" class="edit-strip-select narrow" title="Font size">
+                <select id="editFontSize" class="edit-strip-select narrow" title="字号">
                     <option value="10">10</option>
                     <option value="11">11</option>
                     <option value="12" selected>12</option>
@@ -3967,50 +3967,50 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                     <option value="18">18</option>
                     <option value="20">20</option>
                 </select>
-                <button id="fontMinusButton" type="button" class="toggle-button icon-only" title="Decrease font">A-</button>
-                <button id="fontPlusButton" type="button" class="toggle-button icon-only" title="Increase font">A+</button>
+                <button id="fontMinusButton" type="button" class="toggle-button icon-only" title="减小字号">A-</button>
+                <button id="fontPlusButton" type="button" class="toggle-button icon-only" title="增大字号">A+</button>
             </div>
             <div class="edit-strip-group">
-                <button id="stripBoldButton" type="button" class="toggle-button icon-only" title="Bold">B</button>
-                <button id="stripItalicButton" type="button" class="toggle-button icon-only" title="Italic">I</button>
-                <button id="stripStrikeButton" type="button" class="toggle-button icon-only" title="Strikethrough">S</button>
-                <button id="stripTextColorButton" type="button" class="toggle-button icon-only" title="Text color">A</button>
-                <button id="stripBgColorButton" type="button" class="toggle-button icon-only" title="Background color">■</button>
+                <button id="stripBoldButton" type="button" class="toggle-button icon-only" title="加粗">B</button>
+                <button id="stripItalicButton" type="button" class="toggle-button icon-only" title="斜体">I</button>
+                <button id="stripStrikeButton" type="button" class="toggle-button icon-only" title="删除线">S</button>
+                <button id="stripTextColorButton" type="button" class="toggle-button icon-only" title="文字颜色">A</button>
+                <button id="stripBgColorButton" type="button" class="toggle-button icon-only" title="背景色">■</button>
             </div>
             <div class="edit-strip-group">
-                <select id="editHorizontalAlign" class="edit-strip-select narrow" title="Horizontal align">
+                <select id="editHorizontalAlign" class="edit-strip-select narrow" title="水平对齐">
                     <option value="left">Left</option>
                     <option value="center">Center</option>
                     <option value="right">Right</option>
                 </select>
-                <select id="editVerticalAlign" class="edit-strip-select narrow" title="Vertical align">
+                <select id="editVerticalAlign" class="edit-strip-select narrow" title="垂直对齐">
                     <option value="top">Top</option>
                     <option value="middle">Middle</option>
                     <option value="bottom">Bottom</option>
                 </select>
             </div>
             <div class="edit-strip-group">
-                <button id="stripBordersButton" type="button" class="toggle-button" title="Borders">Borders</button>
-                <select id="editBorderThickness" class="edit-strip-select narrow" title="Border thickness">
+                <button id="stripBordersButton" type="button" class="toggle-button" title="边框">边框</button>
+                <select id="editBorderThickness" class="edit-strip-select narrow" title="边框粗细">
                     <option value="thin" selected>1px</option>
                     <option value="medium">2px</option>
                     <option value="thick">3px</option>
                 </select>
-                <select id="editBorderPattern" class="edit-strip-select narrow" title="Border pattern">
+                <select id="editBorderPattern" class="edit-strip-select narrow" title="边框样式">
                     <option value="solid" selected>Solid</option>
                     <option value="dashed">Dashed</option>
                     <option value="dotted">Dotted</option>
                     <option value="double">Double</option>
                 </select>
-                <button id="stripBorderColorButton" type="button" class="toggle-button icon-only" title="Border color">▣</button>
-                <button id="indentDecreaseButton" type="button" class="toggle-button icon-only" title="Decrease indent">←</button>
-                <button id="indentIncreaseButton" type="button" class="toggle-button icon-only" title="Increase indent">→</button>
+                <button id="stripBorderColorButton" type="button" class="toggle-button icon-only" title="边框颜色">▣</button>
+                <button id="indentDecreaseButton" type="button" class="toggle-button icon-only" title="减少缩进">←</button>
+                <button id="indentIncreaseButton" type="button" class="toggle-button icon-only" title="增加缩进">→</button>
             </div>
             <div class="edit-strip-group">
-                <button id="mergeCellsButton" type="button" class="toggle-button" title="Merge selected cells">Merge</button>
-                <button id="unmergeCellsButton" type="button" class="toggle-button" title="Unmerge selected range">Unmerge</button>
-                <button id="formatPainterButton" type="button" class="toggle-button" title="Copy style from active cell, then click a target cell">Painter</button>
-                <button id="clearFormatButton" type="button" class="toggle-button" title="Clear formatting">Clear</button>
+                <button id="mergeCellsButton" type="button" class="toggle-button" title="合并选中单元格">合并</button>
+                <button id="unmergeCellsButton" type="button" class="toggle-button" title="取消合并选中区域">取消合并</button>
+                <button id="formatPainterButton" type="button" class="toggle-button" title="复制当前单元格样式后，再点击目标单元格">格式刷</button>
+                <button id="clearFormatButton" type="button" class="toggle-button" title="清除格式">清除</button>
             </div>
         `;
 
@@ -5203,7 +5203,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                 <span id="versionPreviewText" class="version-preview-text"></span>
                 <div class="version-preview-actions">
                     <button id="restoreVersionButton" class="toggle-button" type="button">Restore</button>
-                    <button id="cancelVersionPreviewButton" class="toggle-button" type="button">Cancel</button>
+                    <button id="cancelVersionPreviewButton" class="toggle-button" type="button">取消</button>
                 </div>
             `;
 
@@ -6743,7 +6743,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         overlay.className = 'xlsx-image-preview-overlay hidden';
         overlay.innerHTML = `
             <div class="xlsx-image-preview-dialog" role="dialog" aria-modal="true" aria-label="Image preview">
-                <button type="button" id="xlsxImagePreviewClose" class="xlsx-image-preview-close" aria-label="Close image preview">Close</button>
+                <button type="button" id="xlsxImagePreviewClose" class="xlsx-image-preview-close" aria-label="关闭图片预览">关闭</button>
                 <img id="xlsxImagePreviewImg" class="xlsx-image-preview-image" alt="XLSX cell image preview" />
             </div>
         `;
@@ -6884,8 +6884,8 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                 rtlBtn.classList.toggle('rtl-active', isRtl);
                 rtlBtn.classList.toggle('active', isRtl);
                 const statusStr = isRtl ? 'RTL' : 'LTR';
-                const modeStr = dirSetting === 'auto' ? ' (Auto-detected)' : ` (${dirSetting.toUpperCase()})`;
-                toolbarManager.setButtonTooltip('toggleRtlButton', `Text Direction: ${statusStr}${modeStr}. Click to toggle.`);
+                const modeStr = dirSetting === 'auto' ? '（自动检测）' : `（${dirSetting.toUpperCase()}）`;
+                toolbarManager.setButtonTooltip('toggleRtlButton', `文字方向：${statusStr}${modeStr}。点击可切换。`);
             }
         }
     }
@@ -7595,7 +7595,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         toolbar.prependElement(sheetSelector);
 
         // Inject tooltip if variables are present
-        InfoTooltip.inject('toolbar', (window as any).viewImgUri, (window as any).logoSvgUri, 'table view');
+        InfoTooltip.inject('toolbar', (window as any).viewImgUri, (window as any).logoSvgUri, '表格视图');
 
         // Ensure the "Plain/Styled" toggle shows the correct label on initial render
         const togglePlainViewBtn = document.getElementById('togglePlainViewButton');

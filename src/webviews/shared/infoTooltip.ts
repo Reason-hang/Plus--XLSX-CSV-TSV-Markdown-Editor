@@ -3,17 +3,17 @@ export class InfoTooltip {
     private static globalTip: HTMLElement | null = null;
     private static activeTrigger: HTMLElement | null = null;
 
-    static inject(toolbarId: string, viewImgUri: string, logoSvgUri: string, viewName: string = 'table view') {
+    static inject(toolbarId: string, viewImgUri: string, logoSvgUri: string, viewName: string = '表格视图') {
         const toolbarEl = document.getElementById(toolbarId);
         if (toolbarEl && viewImgUri && logoSvgUri) {
             const tooltipDiv = document.createElement('div');
             tooltipDiv.className = 'tooltip edit-mode-hide';
             tooltipDiv.innerHTML = `
-                <img src="${viewImgUri}" alt="Change to ${viewName}" style="width: auto; height: 32px; margin-left: auto; margin-top: 2px;" />
+                <img src="${viewImgUri}" alt="切换到${viewName}" style="width: auto; height: 32px; margin-left: auto; margin-top: 2px;" />
                 <span class="tooltiptext hidden">
-                    <span class="warning">Important:</span> Click the toolbar button <img src="${logoSvgUri}" alt="Switch icon" style="width: 16px; vertical-align: middle; height: 16px;" />
-                     to switch to ${viewName} from edit file mode.
-                    <span class="instruction">This action only works in edit file mode and appears in the top right corner of the editor toolbar.</span>
+                    <span class="warning">提示：</span>点击工具栏按钮 <img src="${logoSvgUri}" alt="切换图标" style="width: 16px; vertical-align: middle; height: 16px;" />
+                     可从文件编辑模式切换到${viewName}。
+                    <span class="instruction">此操作仅在文件编辑模式下可用，按钮位于编辑器工具栏右上角。</span>
                 </span>
             `;
             toolbarEl.appendChild(tooltipDiv);

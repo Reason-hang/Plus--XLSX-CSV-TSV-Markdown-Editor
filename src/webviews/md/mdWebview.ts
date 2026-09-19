@@ -603,7 +603,7 @@ md.renderer.rules.heading_close = function (tokens: any, idx: number, options: a
     const id = openToken && openToken.type === 'heading_open' ? openToken.attrGet('id') : null;
     let anchor = '';
     if (id) {
-        anchor = `<a class="heading-anchor" href="#${md.utils.escapeHtml(id)}" data-heading-id="${escapeHtmlAttr(encodeURIComponent(id))}" title="Copy link">#</a>`;
+        anchor = `<a class="heading-anchor" href="#${md.utils.escapeHtml(id)}" data-heading-id="${escapeHtmlAttr(encodeURIComponent(id))}" title="复制链接">#</a>`;
     }
     return anchor + self.renderToken(tokens, idx, options);
 };
@@ -731,7 +731,7 @@ md.renderer.rules.fence = function (tokens: any, idx: number, options: any, env:
     const dataLine = token.map && token.level === 0 ? ` data-line="${token.map[0]}"` : '';
     const langLabel = langName ? `<div class="code-lang">${md.utils.escapeHtml(langName)}</div>` : `<div class="code-lang muted">text</div>`;
     const encoded = encodeURIComponent(code);
-    const copyButton = `<button class="code-copy" data-code="${escapeHtmlAttr(encoded)}" title="Copy code">${Icons.Copy}<span>Copy</span></button>`;
+    const copyButton = `<button class="code-copy" data-code="${escapeHtmlAttr(encoded)}" title="复制代码">${Icons.Copy}<span>复制</span></button>`;
     const langClass = langName ? ` class="language-${escapeHtmlAttr(langName)}"` : '';
 
     // Wrap each line for line numbers
@@ -1083,7 +1083,7 @@ function ensureVersionPreviewBanner(): HTMLElement {
             <span id="versionPreviewText" class="version-preview-text"></span>
             <div class="version-preview-actions">
                 <button id="restoreVersionButton" class="toggle-button" type="button">Restore</button>
-                <button id="cancelVersionPreviewButton" class="toggle-button" type="button">Cancel</button>
+                <button id="cancelVersionPreviewButton" class="toggle-button" type="button">取消</button>
             </div>
         `;
 
@@ -1783,8 +1783,8 @@ function updateTextDirection(sampleText?: string) {
             rtlBtn.classList.toggle('rtl-active', isRtl);
             rtlBtn.classList.toggle('active', isRtl);
             const statusStr = isRtl ? 'RTL' : 'LTR';
-            const modeStr = dirSetting === 'auto' ? ' (Auto-detected)' : ` (${dirSetting.toUpperCase()})`;
-            toolbarManager.setButtonTooltip('toggleRtlButton', `Text Direction: ${statusStr}${modeStr}. Click to toggle.`);
+            const modeStr = dirSetting === 'auto' ? '（自动检测）' : `（${dirSetting.toUpperCase()}）`;
+            toolbarManager.setButtonTooltip('toggleRtlButton', `文字方向：${statusStr}${modeStr}。点击可切换。`);
         }
     }
 }
@@ -1920,8 +1920,8 @@ function initializeSettings() {
     const settingsDefs = [
         {
             id: 'chkWordWrap',
-            label: 'Word Wrap',
-            tooltip: 'Wrap long lines in the Markdown preview/editor instead of horizontal scrolling.',
+            label: '自动换行',
+            tooltip: '让 Markdown 预览和编辑区的长行自动换行，避免横向滚动。',
             defaultValue: currentSettings.wordWrap,
             onChange: (val: boolean) => {
                 currentSettings.wordWrap = val;
@@ -1930,8 +1930,8 @@ function initializeSettings() {
         },
         {
             id: 'chkStickyToolbar',
-            label: 'Sticky Toolbar',
-            tooltip: 'Keep the Markdown toolbar pinned at the top while you scroll.',
+            label: '固定工具栏',
+            tooltip: '滚动时将 Markdown 工具栏固定在顶部。',
             defaultValue: currentSettings.stickyToolbar,
             onChange: (val: boolean) => {
                 currentSettings.stickyToolbar = val;
@@ -1940,8 +1940,8 @@ function initializeSettings() {
         },
         {
             id: 'chkSyncScroll',
-            label: 'Sync Scrolling',
-            tooltip: 'Synchronize editor and preview scroll positions in split mode.',
+            label: '同步滚动',
+            tooltip: '在分栏模式下同步编辑区与预览区的滚动位置。',
             defaultValue: currentSettings.syncScroll,
             onChange: (val: boolean) => {
                 currentSettings.syncScroll = val;
@@ -1950,8 +1950,8 @@ function initializeSettings() {
         },
         {
             id: 'chkPreviewLeft',
-            label: 'Preview on Left',
-            tooltip: 'Show preview on the left side instead of the right in split mode.',
+            label: '预览居左',
+            tooltip: '在分栏模式下将预览区显示在左侧，而不是右侧。',
             defaultValue: currentSettings.previewPosition === 'left',
             onChange: (val: boolean) => {
                 currentSettings.previewPosition = val ? 'left' : 'right';
@@ -1960,8 +1960,8 @@ function initializeSettings() {
         },
         {
             id: 'chkShowOutline',
-            label: 'Show Outline',
-            tooltip: 'Display the document outline panel for heading navigation.',
+            label: '显示大纲',
+            tooltip: '显示文档大纲面板，便于按标题导航。',
             defaultValue: currentSettings.showOutline,
             onChange: (val: boolean) => {
                 currentSettings.showOutline = val;
@@ -1970,8 +1970,8 @@ function initializeSettings() {
         },
         {
             id: 'chkShowLineNumbers',
-            label: 'Line Numbers',
-            tooltip: 'Show line numbers in fenced code block previews.',
+            label: '显示行号',
+            tooltip: '在围栏代码块预览中显示行号。',
             defaultValue: currentSettings.showLineNumbers,
             onChange: (val: boolean) => {
                 currentSettings.showLineNumbers = val;
@@ -1980,8 +1980,8 @@ function initializeSettings() {
         },
         {
             id: 'chkMoveMdButtonsToEnd',
-            label: 'Move Enable/Disable MD Buttons Near Help',
-            tooltip: 'Place the Enable/Disable MD buttons just before Help & Feedback instead of at the start of the toolbar.',
+            label: '将 Markdown 开关移至帮助前',
+            tooltip: '将启用/停用 Markdown 按钮放在“帮助与反馈”前，而不是工具栏起始位置。',
             defaultValue: currentSettings.moveMdButtonsToEnd,
             onChange: (val: boolean) => {
                 currentSettings.moveMdButtonsToEnd = val;
@@ -1990,8 +1990,8 @@ function initializeSettings() {
         },
         {
             id: 'chkRTLTextDirection',
-            label: 'RTL Text Direction',
-            tooltip: 'Force Right-to-Left (RTL) text direction for Markdown preview and editor.',
+            label: 'RTL 文字方向',
+            tooltip: '强制 Markdown 预览和编辑区使用从右到左（RTL）文字方向。',
             defaultValue: currentSettings.textDirection === 'rtl',
             onChange: (val: boolean) => {
                 currentSettings.textDirection = val ? 'rtl' : 'ltr';
@@ -2000,8 +2000,8 @@ function initializeSettings() {
         },
         {
             id: 'chkShowPopups',
-            label: 'Show Notification Popups',
-            tooltip: 'Show popup notifications (such as save toasts) during editor usage. Uncheck to disable.',
+            label: '显示通知弹窗',
+            tooltip: '编辑时显示通知弹窗（例如保存提示）；取消勾选可关闭。',
             defaultValue: (currentSettings as any).showPopups !== false,
             onChange: (val: boolean) => {
                 (currentSettings as any).showPopups = val;
@@ -2010,134 +2010,134 @@ function initializeSettings() {
         },
         {
             id: 'txtMarkBackgroundColor',
-            label: 'Highlight background',
-            section: 'Markdown appearance',
+            label: '高亮背景色',
+            section: 'Markdown 外观',
             inputType: 'text' as const,
             className: 'setting-text setting-text-wide',
             defaultTextValue: currentSettings.appearance?.markBackgroundColor || '#FF4E00',
             placeholder: '#FF4E00',
-            tooltip: 'Background color for standard <mark> highlights, for example #FF4E00.',
+            tooltip: '标准 <mark> 高亮的背景色，例如 #FF4E00。',
             onChange: (val: string) => appearanceValue('markBackgroundColor', val)
         },
         {
             id: 'txtMarkTextColor',
-            label: 'Highlight text color',
-            section: 'Markdown appearance',
+            label: '高亮文字颜色',
+            section: 'Markdown 外观',
             inputType: 'text' as const,
             className: 'setting-text setting-text-wide',
             defaultTextValue: currentSettings.appearance?.markTextColor || 'inherit',
             placeholder: 'inherit',
-            tooltip: 'Text color for <mark> highlights, or inherit to follow the preview text color.',
+            tooltip: '<mark> 高亮的文字颜色；填写 inherit 时跟随预览文字颜色。',
             onChange: (val: string) => appearanceValue('markTextColor', val)
         },
         {
             id: 'txtMarkFontWeight',
-            label: 'Highlight weight',
-            section: 'Markdown appearance',
+            label: '高亮字重',
+            section: 'Markdown 外观',
             inputType: 'text' as const,
             className: 'setting-text setting-text-wide',
             defaultTextValue: currentSettings.appearance?.markFontWeight || 'inherit',
             placeholder: 'inherit',
-            tooltip: 'Font weight for <mark> highlights, for example 700 or inherit.',
+            tooltip: '<mark> 高亮的字重，例如 700 或 inherit。',
             onChange: (val: string) => appearanceValue('markFontWeight', val)
         },
         {
             id: 'txtMarkPadding',
-            label: 'Highlight padding',
-            section: 'Markdown appearance',
+            label: '高亮内边距',
+            section: 'Markdown 外观',
             inputType: 'text' as const,
             className: 'setting-text setting-text-wide',
             defaultTextValue: currentSettings.appearance?.markPadding || '0 2px',
             placeholder: '0 2px',
-            tooltip: 'Padding around <mark> highlights, for example 0 2px.',
+            tooltip: '<mark> 高亮周围的内边距，例如 0 2px。',
             onChange: (val: string) => appearanceValue('markPadding', val)
         },
         {
             id: 'txtMarkBorderRadius',
-            label: 'Highlight radius',
-            section: 'Markdown appearance',
+            label: '高亮圆角',
+            section: 'Markdown 外观',
             inputType: 'text' as const,
             className: 'setting-text setting-text-wide',
             defaultTextValue: currentSettings.appearance?.markBorderRadius || '2px',
             placeholder: '2px',
-            tooltip: 'Border radius for <mark> highlights, for example 2px.',
+            tooltip: '<mark> 高亮的圆角，例如 2px。',
             onChange: (val: string) => appearanceValue('markBorderRadius', val)
         },
         {
             id: 'txtHeadingColor',
-            label: 'Heading color',
-            section: 'Markdown appearance',
+            label: '标题颜色',
+            section: 'Markdown 外观',
             inputType: 'text' as const,
             className: 'setting-text setting-text-wide',
             defaultTextValue: currentSettings.appearance?.headingColor || '#569CD6',
             placeholder: '#569CD6',
-            tooltip: 'Color for all Markdown preview heading levels h1-h6, for example #569CD6.',
+            tooltip: 'Markdown 预览 h1-h6 标题的统一颜色，例如 #569CD6。',
             onChange: (val: string) => appearanceValue('headingColor', val)
         },
         {
             id: 'txtPreviewBackgroundColor',
-            label: 'Preview background',
-            section: 'Markdown appearance',
+            label: '预览背景色',
+            section: 'Markdown 外观',
             inputType: 'text' as const,
             className: 'setting-text setting-text-wide',
             defaultTextValue: currentSettings.appearance?.previewBackgroundColor || '',
-            placeholder: 'follow IDE theme',
-            tooltip: 'Preview background color. Leave empty to follow the IDE theme.',
+            placeholder: '跟随 IDE 主题',
+            tooltip: '预览区背景色；留空时跟随 IDE 主题。',
             onChange: (val: string) => appearanceValue('previewBackgroundColor', val)
         },
         {
             id: 'txtPreviewTextColor',
-            label: 'Preview text color',
-            section: 'Markdown appearance',
+            label: '预览文字颜色',
+            section: 'Markdown 外观',
             inputType: 'text' as const,
             className: 'setting-text setting-text-wide',
             defaultTextValue: currentSettings.appearance?.previewTextColor || '',
-            placeholder: 'follow IDE theme',
-            tooltip: 'Preview text color. Leave empty to follow the IDE theme.',
+            placeholder: '跟随 IDE 主题',
+            tooltip: '预览区文字颜色；留空时跟随 IDE 主题。',
             onChange: (val: string) => appearanceValue('previewTextColor', val)
         },
         {
             id: 'txtEditorFontSize',
-            label: 'Editor font size',
-            section: 'Markdown appearance',
+            label: '编辑区字号',
+            section: 'Markdown 外观',
             inputType: 'text' as const,
             className: 'setting-text',
             defaultTextValue: currentSettings.appearance?.editorFontSize || '16px',
             placeholder: '16px',
-            tooltip: 'Font size for the left Markdown editor pane, for example 16px.',
+            tooltip: '左侧 Markdown 编辑区字号，例如 16px。',
             onChange: (val: string) => appearanceValue('editorFontSize', val)
         },
         {
             id: 'txtEditorLineHeight',
-            label: 'Editor line height',
-            section: 'Markdown appearance',
+            label: '编辑区行高',
+            section: 'Markdown 外观',
             inputType: 'text' as const,
             className: 'setting-text',
             defaultTextValue: currentSettings.appearance?.editorLineHeight || '1.8',
             placeholder: '1.8',
-            tooltip: 'Line height for the left Markdown editor pane, for example 1.8.',
+            tooltip: '左侧 Markdown 编辑区行高，例如 1.8。',
             onChange: (val: string) => appearanceValue('editorLineHeight', val)
         },
         {
             id: 'txtPreviewFontSize',
-            label: 'Preview font size',
-            section: 'Markdown appearance',
+            label: '预览区字号',
+            section: 'Markdown 外观',
             inputType: 'text' as const,
             className: 'setting-text',
             defaultTextValue: currentSettings.appearance?.previewFontSize || '',
             placeholder: '17px',
-            tooltip: 'Font size for the right Markdown preview pane, for example 17px.',
+            tooltip: '右侧 Markdown 预览区字号，例如 17px。',
             onChange: (val: string) => appearanceValue('previewFontSize', val)
         },
         {
             id: 'txtPreviewLineHeight',
-            label: 'Preview line height',
-            section: 'Markdown appearance',
+            label: '预览区行高',
+            section: 'Markdown 外观',
             inputType: 'text' as const,
             className: 'setting-text',
             defaultTextValue: currentSettings.appearance?.previewLineHeight || '',
             placeholder: '1.8',
-            tooltip: 'Line height for the right Markdown preview pane, for example 1.8.',
+            tooltip: '右侧 Markdown 预览区行高，例如 1.8。',
             onChange: (val: string) => appearanceValue('previewLineHeight', val)
         }
     ];
@@ -2285,7 +2285,7 @@ function wireButtons() {
     reorderMdToolbarButtons();
 
     // Inject tooltip if variables are present
-    InfoTooltip.inject('toolbar', (window as any).viewImgUri, (window as any).logoSvgUri, 'GitHub Flavored Markdown');
+    InfoTooltip.inject('toolbar', (window as any).viewImgUri, (window as any).logoSvgUri, 'GitHub 风格 Markdown 视图');
 
     // Theme manager
     new ThemeManager('toggleBackgroundButton', {
@@ -2298,8 +2298,8 @@ function buildToolbarButtons() {
         {
             id: 'enableMdEditorButton',
             icon: Icons.Zap,
-            label: 'Enable MD',
-            tooltip: 'Enable Markdown Viewer for all Markdown files (Make Default)',
+            label: '启用 Markdown',
+            tooltip: '为所有 Markdown 文件启用此查看器（设为默认）。',
             cls: 'edit-mode-hide',
             hidden: true,
             onClick: () => {
@@ -2309,7 +2309,7 @@ function buildToolbarButtons() {
         {
             id: 'refreshButton',
             icon: Icons.Refresh,
-            tooltip: 'Reload file from disk',
+            tooltip: '从磁盘重新加载文件',
             cls: 'icon-only edit-mode-hide',
             onClick: () => {
                 vscode.postMessage({ command: 'requestFreshData' });
@@ -2318,8 +2318,8 @@ function buildToolbarButtons() {
         {
             id: 'disableMdEditorButton',
             icon: Icons.ZapOff,
-            label: 'Disable MD',
-            tooltip: 'Disable Markdown Viewer for all Markdown files',
+            label: '停用 Markdown',
+            tooltip: '为所有 Markdown 文件停用此查看器。',
             cls: 'edit-mode-hide',
             onClick: () => {
                 vscode.postMessage({ command: 'disableMdEditor' });
@@ -2328,8 +2328,8 @@ function buildToolbarButtons() {
         {
             id: 'toggleViewButton',
             icon: Icons.EditFile,
-            label: 'Edit File',
-            tooltip: 'Edit File in Vscode Default Editor',
+            label: '编辑文件',
+            tooltip: '在 VS Code 默认编辑器中编辑文件',
             onClick: () => {
                 isPreviewView = !isPreviewView;
                 vscode.postMessage({ command: 'toggleView', isPreviewView });
@@ -2338,21 +2338,21 @@ function buildToolbarButtons() {
         {
             id: 'toggleEditModeButton',
             icon: Icons.SplitEdit,
-            label: 'Split Edit',
-            tooltip: 'Edit Markdown side-by-side',
+            label: '分栏编辑',
+            tooltip: '左右分栏编辑 Markdown',
             onClick: () => setEditMode(true)
         },
         {
             id: 'previewEditButton',
             icon: Icons.ReviewOnly,
-            label: 'Preview Edit',
-            tooltip: 'Edit directly in preview (WYSIWYG)',
+            label: '预览编辑',
+            tooltip: '直接在预览区编辑（所见即所得）',
             onClick: () => setPreviewEditMode(true)
         },
         {
             id: 'saveEditsButton',
             icon: Icons.Save,
-            tooltip: 'Save Changes (Ctrl+S)',
+            tooltip: '保存更改（Ctrl/Cmd+S）',
             cls: 'icon-only',
             hidden: true,
             onClick: () => performSave(true)
@@ -2360,15 +2360,15 @@ function buildToolbarButtons() {
         {
             id: 'cancelEditsButton',
             icon: Icons.Cancel,
-            label: 'Cancel',
-            tooltip: 'Cancel Changes (Esc)',
+            label: '取消',
+            tooltip: '取消更改（Esc）',
             hidden: true,
             onClick: () => cancelEdit()
         },
         {
             id: 'toggleTocButton',
             icon: Icons.Outline,
-            tooltip: 'Toggle Outline',
+            tooltip: '切换大纲',
             cls: 'icon-only',
             onClick: () => {
                 currentSettings.showOutline = !currentSettings.showOutline;
@@ -2379,7 +2379,7 @@ function buildToolbarButtons() {
             id: 'toggleRtlButton',
             icon: Icons.TextDirection,
             label: 'RTL',
-            tooltip: 'Toggle Right-to-Left (RTL) / LTR text direction',
+            tooltip: '切换从右到左（RTL）/ 从左到右（LTR）文字方向',
             onClick: () => {
                 let nextDir: 'auto' | 'ltr' | 'rtl' = 'rtl';
                 const current = currentSettings.textDirection || 'auto';
@@ -2397,35 +2397,35 @@ function buildToolbarButtons() {
         {
             id: 'searchButton',
             icon: Icons.Search,
-            tooltip: 'Search in Preview (Ctrl/Cmd+F)',
+            tooltip: '在预览中搜索（Ctrl/Cmd+F）',
             cls: 'icon-only',
             onClick: () => toggleSearchOverlay()
         },
         {
             id: 'openSettingsButton',
             icon: Icons.Settings,
-            tooltip: 'Settings',
+            tooltip: '设置',
             cls: 'icon-only',
             onClick: () => { /* Handled by wireSettingsUI */ }
         },
         {
             id: 'toggleBackgroundButton',
             icon: Icons.ThemeLight + Icons.ThemeDark + Icons.ThemeVSCode,
-            tooltip: 'Toggle Theme',
+            tooltip: '切换主题',
             cls: 'edit-mode-hide',
             onClick: () => { /* Handled by ThemeManager */ }
         },
         {
             id: 'focusModeButton',
             icon: Icons.Focus,
-            tooltip: 'Focus Mode',
+            tooltip: '专注模式',
             cls: 'icon-only',
             onClick: () => toggleFocusMode()
         },
         {
             id: 'copyHtmlButton',
             icon: Icons.CopyHtml,
-            tooltip: 'Copy as HTML',
+            tooltip: '复制为 HTML',
             cls: 'icon-only edit-mode-hide',
             onClick: () => {
                 const preview = $('markdownPreview');
@@ -2439,7 +2439,7 @@ function buildToolbarButtons() {
         {
             id: 'exportPdfButton',
             icon: Icons.ExportPdf,
-            tooltip: 'Export to PDF',
+            tooltip: '导出为 PDF',
             cls: 'icon-only edit-mode-hide',
             onClick: () => {
                 const preview = $('markdownPreview');
@@ -2469,7 +2469,7 @@ function buildToolbarButtons() {
         {
             id: 'versionHistoryButton',
             icon: Icons.VersionHistory,
-            tooltip: 'Version History',
+            tooltip: '版本历史',
             cls: 'icon-only edit-mode-hide',
             onClick: () => {
                 vscode.postMessage({ command: 'showVersionHistory' });
@@ -2478,7 +2478,7 @@ function buildToolbarButtons() {
         {
             id: 'projectsButton',
             icon: Icons.Link,
-            tooltip: 'Other Projects',
+            tooltip: '其他项目',
             cls: 'icon-only edit-mode-hide',
             onClick: () => {
                 ProjectsModal.show();
@@ -2487,7 +2487,7 @@ function buildToolbarButtons() {
         {
             id: 'helpButton',
             icon: Icons.Help,
-            tooltip: 'Help & Feedback',
+            tooltip: '帮助与反馈',
             cls: 'icon-only edit-mode-hide',
             onClick: () => {
                 FeedbackModal.show();
@@ -3108,10 +3108,10 @@ function createTableHoverControls(): HTMLElement {
     controls.setAttribute('contenteditable', 'false');
 
     controls.innerHTML = [
-        '<button class="table-tool-btn" data-table-action="tableAddRowBelow" title="Add row below">+ Row</button>',
-        '<button class="table-tool-btn" data-table-action="tableRemoveRow" title="Remove row">- Row</button>',
-        '<button class="table-tool-btn" data-table-action="tableAddColumnRight" title="Add column right">+ Column</button>',
-        '<button class="table-tool-btn" data-table-action="tableRemoveColumn" title="Remove column">- Column</button>'
+        '<button class="table-tool-btn" data-table-action="tableAddRowBelow" title="在下方添加行">+ 行</button>',
+        '<button class="table-tool-btn" data-table-action="tableRemoveRow" title="删除当前行">- 行</button>',
+        '<button class="table-tool-btn" data-table-action="tableAddColumnRight" title="在右侧添加列">+ 列</button>',
+        '<button class="table-tool-btn" data-table-action="tableRemoveColumn" title="删除当前列">- 列</button>'
     ].join('');
 
     return controls;
