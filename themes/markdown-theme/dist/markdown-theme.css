@@ -86,7 +86,7 @@
   border: 1px solid #444444;
 }
 .markdown-preview table tr:nth-child(even) td {
-  background-color: #242424;
+  background-color: #2a2a2d;
 }
 .markdown-preview code,
 .markdown-preview code.inline-code {

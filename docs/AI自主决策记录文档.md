@@ -1,7 +1,7 @@
 # AI自主决策记录文档
 
 > 状态：持续记录
-> 更新时间：2026-09-15
+> 更新时间：2026-09-19
 > 任务：整理文档目录、收敛当前项目事实、补齐完整增强版说明，并在验证后推送仓库
 
 ## 目录
@@ -26,12 +26,22 @@
 | 分支 | codex/release-1.9.98-local.7（本地修复工作分支，已推送到 `personal/main`） |
 | 上游集成基线 | v1.9.98，`fd6ed727bf241f6fd2c1380a609e7c728e108ee4` |
 | 历史对比基线 | v1.9.97，`cb1c765c0da95d49ecd50ec3b0e26ca7ca185ebb` |
-| 当前版本 | 1.9.98-local.10 |
+| 当前版本 | 1.9.98-local.11 |
 | 远端发布目标 | personal/main |
 | 主题实现 | 已有外置 CSS、manifest、监听、回退和 MPE 适配基础 |
-| 真实 IDE 验收 | `.10` 仍需在 VS Code、Cursor、Antigravity 中人工执行 |
+| 真实 IDE 验收 | `.11` 仍需在 VS Code、Cursor、Antigravity 中人工执行 |
 
 ## 决策记录
+
+### D-021：固定头部以工具栏包装器作为高度与定位边界
+
+- 风险等级：高。
+- 背景：`.10` 的真实 Antigravity 截图显示 Split Edit 下第二行格式工具栏被内容区覆盖，并非单纯的横向 Flex 挤压。
+- 证据：主工具栏使用 fixed 定位，格式工具栏被移入 `overflow: hidden` 的 `.toolbar-wrapper`；`ToolbarManager.updateHeaderHeight()` 只测量内层 `#toolbar`，而 `#content` 使用 `100vh - --header-height`。
+- 决策：由 `.toolbar-wrapper` 统一固定和承载两层工具栏；高度观测与 CSS 变量均使用该包装器的实际高度。格式栏显示、隐藏或重排后在下一帧回算高度。
+- 原因：这是最小且可回退的层级修复，既保持 Sticky Toolbar，也避免以关闭功能或增加固定魔法高度掩盖问题；电子表格只有主工具栏时仍沿用原上限策略。
+- 验证方式：类型、构建、静态回归、主题、文档、VSIX 验包；三个 IDE 安装 `.11` 后检查 Split Edit、Preview Edit 和窄分栏。
+- 残余风险：真实窗口尚未加载 `.11`，不能把源代码与静态验证替代为现场 UI 通过。
 
 ### D-001：以当前源码、配置和验证产物作为唯一事实源
 

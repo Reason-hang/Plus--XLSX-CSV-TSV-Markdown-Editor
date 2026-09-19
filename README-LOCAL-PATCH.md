@@ -13,9 +13,9 @@
 
 ## 1. 目标与边界
 
-本 Fork 是个人侧载用的补丁版，当前以原作者仓库 `v1.9.98`（提交 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4`）作为集成基线；`v1.9.97` 仅作为历史对照基线。当前版本为 `1.9.98-local.10`，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`，因此同一个 IDE 中会替换官方扩展，不能并存。
+本 Fork 是个人侧载用的补丁版，当前以原作者仓库 `v1.9.98`（提交 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4`）作为集成基线；`v1.9.97` 仅作为历史对照基线。当前版本为 `1.9.98-local.11`，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`，因此同一个 IDE 中会替换官方扩展，不能并存。
 
-`1.9.98-local.10` 当前锁文件在线审计为 0 项漏洞。运行时公式渲染继续直接使用 `katex`，移除了无自动修复的 `markdown-it-katex`；`.8` 同时移除 Markdown CSP 中无必要的 `unsafe-eval`，并以根级 overrides 升级开发链 `diff`、`serialize-javascript` 及 ExcelJS 使用的 `uuid`。`.9` 新增 h1-h6 标题统一配色配置并修复窄分栏格式工具栏裁切；`.10` 增加统一 Webview schema、payload/坐标/StyleStorage 容量限制、realpath/symlink 边界和本地 KaTeX CSS/字体。最终文档证据提交前已用 `git ls-remote personal refs/heads/main` 实时核对 GitHub `personal/main` 为 `a60a917a282a6e14fc7523bf2bec0c015487e90f`；本次最终文档提交后的实时指针以交付记录中的最后一次命令输出为准。
+`1.9.98-local.11` 当前锁文件在线审计为 0 项漏洞。运行时公式渲染继续直接使用 `katex`，移除了无自动修复的 `markdown-it-katex`；`.8` 同时移除 Markdown CSP 中无必要的 `unsafe-eval`，并以根级 overrides 升级开发链 `diff`、`serialize-javascript` 及 ExcelJS 使用的 `uuid`。`.9` 新增 h1-h6 标题统一配色配置；`.10` 增加统一 Webview schema、payload/坐标/StyleStorage 容量限制、realpath/symlink 边界和本地 KaTeX CSS/字体；`.11` 改为以工具栏整体高度计算内容避让，解决 Split Edit/Preview Edit 格式栏覆盖，并将深色表格交替行固定为奇数 `#161617`、偶数 `#27272A`。远端实时指针以本次交付后的 `git ls-remote personal refs/heads/main` 输出为准。
 
 本次完整增强版的目标是：只维护一份 Less 主题源码，生成一份 CSS，同时供本扩展和 Markdown Preview Enhanced（MPE）使用；Markdown 正文只写语义明确的 `<mark>重点</mark>`，不再为每篇文档插入 `<style>` 或冗长的 `<span style="...">`。本版本同时收敛外部输入净化、保存前一致性校验、原子写入和版本历史上限。
 
@@ -89,7 +89,7 @@ Markdown 正文只写：
 
 也可打开插件工具栏的 `Settings` 面板，在 `Markdown appearance` 分组调整这些字号、行高，以及 `<mark>` 背景/文字/字重/内边距/圆角和预览背景/文字颜色。该面板是受控配置入口，不允许输入任意 CSS 规则或脚本；设置值保存到扩展配置，并在当前 Webview 即时生效。
 
-标题颜色使用统一配置 `xlsxViewer.md.headingColor`，默认值为 `#569CD6`，同时作用于 Markdown 预览的 h1-h6；Settings 面板中的 `Heading color` 会即时更新当前预览。格式工具栏在窄分栏中会自动换行，按钮保持可点击尺寸，不再把末尾工具组挤出可视区域。
+标题颜色使用统一配置 `xlsxViewer.md.headingColor`，默认值为 `#569CD6`，同时作用于 Markdown 预览的 h1-h6；Settings 面板中的 `Heading color` 会即时更新当前预览。格式工具栏在窄分栏中会自动换行，按钮保持可点击尺寸；固定头部会按主工具栏与格式工具栏的实际总高度预留空间，不会再被内容区覆盖。
 
 `.10` 的输入边界规则集中在 `src/shared/webviewMessageSchema.ts`：未知 command、错误字段类型、超限数组/字符串/Base64、非法坐标、超大合并范围都会直接拒绝；Markdown 图片只有工作区/文档目录或 `xlsxViewer.md.externalResourceRoots` 中的真实路径可以暴露给 Webview。KaTeX CSS 与字体位于 `resources/md/katex`，不再依赖 CDN。
 
@@ -152,12 +152,12 @@ npm run verify:local-patch
 npm run verify:theme-system
 npm run verify:docs
 npm test  # 首次运行会下载对应 VS Code Extension Host
-npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix"
+npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.11.vsix"
 ```
 
 通过 IDE 的 `Extensions: Install from VSIX...` 安装；不要直接把解压目录复制到 `~/.vscode/extensions`、`~/.cursor/extensions` 或 `~/.antigravity/extensions`。安装后关闭该扩展的自动更新，避免被官方版本覆盖。
 
-当前 `.10` 发布候选包为 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix`，包外 SHA-256 为 `fd9ed64532dd6c9351b9671c69b55a4d2f9c7383630844efa2f526b93f31cf45`；VSIX 内文档不自引用自身哈希。
+当前 `.11` 发布候选包为 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.11.vsix`，包外 SHA-256 为 `f641feb334cd036a9f4b80dd38985e6bbfe96f2ef6881daaa0c5f3c2a31b6f71`；VSIX 内文档不自引用自身哈希。
 
 ## 8. 验收、回退与维护成本
 
@@ -167,7 +167,7 @@ npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.
 | 主题 CSS 注入、路径校验、失败回退 | 类型检查与源码验证 | 打开 Markdown 后确认状态和刷新 |
 | `<mark>` 橙底、目录深色、表格/代码/引用样式 | CSS 选择器验证 | VS Code、Cursor、Antigravity 各至少一次 |
 | h1-h6 默认蓝色与 `xlsxViewer.md.headingColor` 持久化 | 设置默认值、CSS 变量和主题源码验证 | 三个 IDE 各修改一次并重载窗口 |
-| 窄分栏格式工具栏完整显示 | Flex 换行和按钮固定尺寸源码验证 | 缩窄左右分栏，确认末尾工具组可见且可点击 |
+| 窄分栏格式工具栏完整显示 | 固定包装器、总高度测量和内容避让源码验证 | 缩窄左右分栏，确认格式栏完整可见、所有工具组可点击且内容区不覆盖 |
 | Webview 超限输入 | schema/安全回归验证 | 大图片源、超大 PDF/反馈、非法表格编辑和超大元数据均被拒绝 |
 | KaTeX 离线资源 | CSS、字体、CSP 和 VSIX 文件范围验证 | 断网打开公式，确认公式仍可渲染 |
 | XLSX、CSV、TSV 无回归 | 构建与静态验证 | 各打开、编辑、保存一次 |

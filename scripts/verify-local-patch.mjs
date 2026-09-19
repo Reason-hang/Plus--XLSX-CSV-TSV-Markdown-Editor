@@ -59,6 +59,7 @@ const provider = readFileSync('src/mdEditorProvider.ts', 'utf8');
 const webview = readFileSync('src/webviews/md/mdWebview.ts', 'utf8');
 const css = readFileSync('resources/md/mdWebview.css', 'utf8');
 const sharedThemeCss = readFileSync('resources/shared/theme.css', 'utf8');
+const toolbarManager = readFileSync('src/webviews/shared/toolbarManager.ts', 'utf8');
 const messageSchema = readFileSync('src/shared/webviewMessageSchema.ts', 'utf8');
 const requiredSourceMarkers = [
     'getMarkdownSettings',
@@ -84,13 +85,30 @@ const requiredSourceMarkers = [
     'MarkdownThemeService',
     'applyExternalMarkdownTheme',
     'md-sidebar-toc',
+    'scheduleMarkdownHeaderHeightUpdate',
     "case 'highlight': wrapSelection(editor, '<mark>', '</mark>');",
     "e.code === 'Digit3'"
 ];
 
 for (const marker of requiredSourceMarkers) {
-    if (![provider, webview, css, sharedThemeCss, messageSchema].some(source => source.includes(marker))) {
+    if (![provider, webview, css, sharedThemeCss, toolbarManager, messageSchema].some(source => source.includes(marker))) {
         throw new Error(`Local patch source marker is missing: ${marker}`);
+    }
+}
+
+const requiredStickyToolbarMarkers = [
+    'body.sticky-toolbar-enabled .toolbar-wrapper',
+    'overflow: visible;',
+    'body.sticky-toolbar-enabled .formatting-toolbar',
+    'position: static;',
+    'getLayoutHost()',
+    'this.resizeObserver.observe(layoutHost);',
+    'layoutHost.getBoundingClientRect().height'
+];
+
+for (const marker of requiredStickyToolbarMarkers) {
+    if (![webview, css, sharedThemeCss, toolbarManager].some(source => source.includes(marker))) {
+        throw new Error(`Markdown sticky-toolbar layout marker is missing: ${marker}`);
     }
 }
 
@@ -112,11 +130,12 @@ if (css.includes('--xlsx-viewer-md-preview-background: var(--bg-color);') || css
 
 const requiredTableThemeMarkers = [
     '.markdown-preview table.md-table tbody tr:nth-child(even) td',
-    'background: color-mix(in srgb, var(--bg-color) 94%, var(--text-color) 6%);'
+    'background: var(--table-row-alt-bg, color-mix(in srgb, var(--bg-color) 90%, var(--text-color) 10%));',
+    '--table-row-alt-bg: #27272a;'
 ];
 
 for (const marker of requiredTableThemeMarkers) {
-    if (!css.includes(marker)) {
+    if (![css, sharedThemeCss].some(source => source.includes(marker))) {
         throw new Error(`Markdown table dark-theme rule is missing: ${marker}`);
     }
 }

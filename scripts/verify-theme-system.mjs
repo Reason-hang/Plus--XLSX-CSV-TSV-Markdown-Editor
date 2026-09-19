@@ -57,6 +57,9 @@ for (const selector of ['.markdown-preview', '.toc-panel', '.md-sidebar-toc', '.
 if (!css.toLowerCase().includes('background-color: #ff4e00')) {
     throw new Error('主题 CSS 未包含默认橙色 <mark> 高亮。');
 }
+if (!css.toLowerCase().includes('background-color: #2a2a2d')) {
+    throw new Error('主题 CSS 未包含增强后的深色表格交替行背景。');
+}
 if (/\@import\b/i.test(css) || /(^|,)\s*(?:html|body)\b/im.test(css)) {
     throw new Error('主题 CSS 违反单一 CSS 或预览作用域约束。');
 }

@@ -17,8 +17,8 @@
 
 项目以原作者仓库的 `v1.9.98`（提交 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4`）作为当前集成基线，并在此基础上保留本地安全修复和 Markdown 主题增强；`v1.9.97` 仍作为历史功能对比基线。主题增强用一份版本化 Less 主题生成单一 CSS，供本扩展与 Markdown Preview Enhanced（MPE）共同使用。
 
-> 安全提示：`1.9.98-local.10` 当前锁文件在线审计为 0 项漏洞；Markdown Webview 已改为随 VSIX 加载本地 KaTeX CSS/字体，并对消息、Markdown、图片、PDF、反馈、表格编辑和 StyleStorage 设置边界。三个 IDE 的真实交互仍需现场验收。
-> 当前版本是本地开发补丁 `1.9.98-local.10`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
+> 安全提示：`1.9.98-local.11` 当前锁文件在线审计为 0 项漏洞；Markdown Webview 已改为随 VSIX 加载本地 KaTeX CSS/字体，并对消息、Markdown、图片、PDF、反馈、表格编辑和 StyleStorage 设置边界。三个 IDE 的真实交互仍需现场验收。
+> 当前版本是本地开发补丁 `1.9.98-local.11`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
 
 ## 功能概览
 
@@ -131,18 +131,18 @@
 
 ## 相对上游 v1.9.97 的增强
 
-当前本地包为 `1.9.98-local.10`；集成基线为上游 `v1.9.98`（`fd6ed727`），功能差异仍以历史上游 `v1.9.97`（`cb1c765`）作为完整对照，XLSX、CSV、TSV 原有编辑能力保持不变，新增与修复如下：
+当前本地包为 `1.9.98-local.11`；集成基线为上游 `v1.9.98`（`fd6ed727`），功能差异仍以历史上游 `v1.9.97`（`cb1c765`）作为完整对照，XLSX、CSV、TSV 原有编辑能力保持不变，新增与修复如下：
 
 | 模块 | 新增或修改 | 实际作用 |
 | --- | --- | --- |
 | Markdown 外观 | 全局 `<mark>` 配置、h1-h6 标题颜色、预览背景/文字/字号/行高配置 | 统一重点样式、标题层级和阅读体验，无需逐篇写内联样式 |
-| Markdown 工具栏 | 格式工具栏按钮保持固定尺寸并在窄分栏中自动换行 | 避免顶部格式按钮被 Flex 压缩或裁切，所有工具组仍可见 |
+| Markdown 工具栏 | 固定头部按主工具栏与格式工具栏的实际总高度避让内容区 | Split Edit、Preview Edit 下格式工具栏不再被内容区覆盖或裁切 |
 | 输入边界治理 | 统一 Webview message schema、Markdown/PDF/反馈/图片 payload、表格编辑、坐标和 StyleStorage 容量限制 | 超限直接拒绝，拒绝前不写文件、不发网络请求、不更新状态 |
 | 本地资源与路径 | KaTeX CSS/字体随 VSIX 提供；Markdown 图片使用 realpath containment 和可信外部根目录 | 支持离线公式渲染，拒绝未授权 symlink 越界资源 |
 | 双栏排版 | 新增编辑区字号/行高设置 `xlsxViewer.md.editorFontSize`、`xlsxViewer.md.editorLineHeight` | 左侧编辑与右侧预览可分别调节，不影响 IDE 其他编辑器 |
 | 重点高亮快捷键 | `⌘⌥⇧3`（Windows/Linux：`Ctrl+Alt+Shift+3`）将选区写成 `<mark>…</mark>` | 编辑和预览同步高亮，文档可保存、可跨 IDE 阅读 |
 | 统一主题 | Less 单一主题源、外置 CSS、manifest 校验、自动监听刷新、MPE 适配 | 本插件与 MPE 可复用同一主题 |
-| 深色预览 | 未配置预览颜色时跟随 IDE；表头文字继承主题前景色，表格交替行 | 深色模式下预览、表头和表格均可读 |
+| 深色预览 | 未配置预览颜色时跟随 IDE；表头文字继承主题前景色，表格奇数行 `#161617`、偶数行 `#27272A` | 深色模式下预览、表头和表格单双行均可读 |
 | 安全 | Markdown 净化、Webview CSP nonce、表格单元格 HTML 转义 | 打开不可信 Markdown 或表格时降低脚本执行风险 |
 | 保存与冲突 | 原子保存、外部修改指纹检测、历史最多 200 条/50 MiB | 降低写入损坏和旧窗口覆盖新文件的风险 |
 | 表格与转换 | CSV BOM 清理、超大或稀疏 XLSX 保护、多 Sheet 转 CSV/TSV 前确认 | 改善兼容性，避免卡死或无感知丢失工作表 |
@@ -171,18 +171,18 @@ npm run verify:local-patch
 npm run verify:theme-system
 npm run verify:docs
 npm test  # 首次运行会下载对应 VS Code Extension Host
-npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix"
+npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.11.vsix"
 ```
 
-手动安装或将旧版本替换为 `.10`：
+手动安装或将旧版本替换为 `.11`：
 
-1. 下载或选择 `muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix`。
+1. 下载或选择 `muhammad-ahmad.xlsx-viewer-1.9.98-local.11.vsix`。
 2. 在 VS Code、Cursor 或 Antigravity 按 `⌘ Command + ⇧ Shift + P`，执行 `Extensions: Install from VSIX...`。
-3. 选择该 VSIX；出现升级提示时确认。扩展 ID 相同且 `.10` 版本更高，无需先卸载旧版本。
+3. 选择该 VSIX；出现升级提示时确认。扩展 ID 相同且 `.11` 版本更高，无需先卸载旧版本。
 4. 再按 `⌘ Command + ⇧ Shift + P`，执行 `Developer: Reload Window`。
 5. 关闭并重新打开 Markdown 文件，点击 `Split Edit`，确认右侧预览与表格样式。
 
-当前 `.10` 发布候选包为 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.10.vsix`，包外 SHA-256 为 `fd9ed64532dd6c9351b9671c69b55a4d2f9c7383630844efa2f526b93f31cf45`；VSIX 内文档不自引用自身哈希。
+当前 `.11` 发布候选包为 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.11.vsix`，包外 SHA-256 为 `f641feb334cd036a9f4b80dd38985e6bbfe96f2ef6881daaa0c5f3c2a31b6f71`；VSIX 内文档不自引用自身哈希。
 
 > 注意：当前补丁仍沿用上游扩展标识 `muhammad-ahmad.xlsx-viewer`，因此不能与原官方扩展并存。安装本地 VSIX 会替换同一 IDE 中的官方版；重新安装官方扩展即可回退。
 

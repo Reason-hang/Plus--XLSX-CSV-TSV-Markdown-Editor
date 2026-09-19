@@ -955,6 +955,7 @@ function setEditMode(enabled: boolean) {
     // Toggle formatting toolbar
     const fmtToolbar = $('formattingToolbar');
     if (fmtToolbar) fmtToolbar.classList.toggle('hidden', !enabled);
+    scheduleMarkdownHeaderHeightUpdate();
 
     // Ensure preview is not contenteditable
     if (preview) preview.contentEditable = 'false';
@@ -1034,6 +1035,7 @@ function setPreviewEditMode(enabled: boolean) {
     // Show formatting toolbar in preview edit mode
     const fmtToolbar = $('formattingToolbar');
     if (fmtToolbar) fmtToolbar.classList.toggle('hidden', !enabled);
+    scheduleMarkdownHeaderHeightUpdate();
 
     if (enabled) {
         originalContent = currentContent;
@@ -1837,6 +1839,7 @@ function applySettings(settings: any, persist = false) {
                 }
             }
         }
+        scheduleMarkdownHeaderHeightUpdate();
     }
 
     // Preview position (left or right) - only affects split-view, not outline
@@ -2182,6 +2185,10 @@ function updateHeaderHeight() {
     if (toolbarManager) {
         toolbarManager.updateHeaderHeight();
     }
+}
+
+function scheduleMarkdownHeaderHeightUpdate() {
+    requestAnimationFrame(() => updateHeaderHeight());
 }
 
 // ===== Message Handler =====

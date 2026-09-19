@@ -810,7 +810,7 @@ body.preview-edit-mode .markdown-preview table.md-table td {
 }
 
 .markdown-preview table.md-table tbody tr:nth-child(even) td {
-    background: color-mix(in srgb, var(--bg-color) 94%, var(--text-color) 6%);
+    background: var(--table-row-alt-bg, color-mix(in srgb, var(--bg-color) 90%, var(--text-color) 10%));
 }
 
 /* Hover controls under editable tables (preview-edit mode only) */
@@ -1099,8 +1099,8 @@ html::-webkit-scrollbar-corner,
 }
 
 body.sticky-toolbar-enabled .formatting-toolbar {
-    position: sticky;
-    top: var(--header-height);
+    position: static;
+    top: auto;
 }
 
 .formatting-toolbar.hidden {

@@ -22,13 +22,15 @@ export class ToolbarManager {
         this.container = el;
     }
 
+    private getLayoutHost(): HTMLElement {
+        const parent = this.container.parentElement;
+        return parent && parent.classList.contains('toolbar-wrapper') ? parent : this.container;
+    }
+
     applyStickyLayout(stickyToolbar: boolean, contentId: string = 'content', scrollQuery: string = '.table-scroll') {
         this.isSticky = stickyToolbar;
         const container = this.container;
-        const wrapper = container.parentElement && container.parentElement.classList.contains('toolbar-wrapper')
-            ? container.parentElement as HTMLElement
-            : null;
-        const layoutHost = wrapper || container;
+        const layoutHost = this.getLayoutHost();
         const content = document.getElementById(contentId);
         const scrollArea = document.querySelector(scrollQuery);
         const headerBg = document.querySelector('.header-background') as HTMLElement | null;
@@ -56,7 +58,7 @@ export class ToolbarManager {
 
             if (!this.resizeObserver) {
                 this.resizeObserver = new ResizeObserver(() => this.updateHeaderHeight());
-                this.resizeObserver.observe(container);
+                this.resizeObserver.observe(layoutHost);
             }
         } else {
             document.body.classList.remove('sticky-toolbar-enabled');
@@ -92,10 +94,15 @@ export class ToolbarManager {
             return;
         }
 
-        let height = Math.max(6, Math.ceil(this.container.getBoundingClientRect().height));
+        const layoutHost = this.getLayoutHost();
+        let height = Math.max(6, Math.ceil(layoutHost.getBoundingClientRect().height));
         const maxHeightStr = getComputedStyle(document.documentElement).getPropertyValue('--header-height-max');
         const maxHeight = parseInt(maxHeightStr, 10) || 96;
-        height = Math.min(height, maxHeight);
+        // A Markdown formatting toolbar can wrap below the main toolbar.  Its full
+        // height must reserve space instead of being cropped by the content area.
+        if (layoutHost === this.container) {
+            height = Math.min(height, maxHeight);
+        }
 
         document.documentElement.style.setProperty('--header-height', height + 'px');
 
