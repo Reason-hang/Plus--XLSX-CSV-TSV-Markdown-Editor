@@ -130,6 +130,28 @@ for (const marker of requiredEditViewportMarkers) {
     }
 }
 
+const requiredOutlineTreeMarkers = [
+    '.toc-level-1 { padding-left: 2px;',
+    '.toc-level-2 { padding-left: 22px;',
+    '.toc-level-3 { padding-left: 42px;',
+    '.toc-level-4 { padding-left: 62px;',
+    '.toc-level-5 { padding-left: 82px;',
+    '.toc-level-6 { padding-left: 102px;',
+    'overflow-wrap: anywhere;',
+    'box-shadow: inset 2px 0 0 var(--accent-color);'
+];
+
+for (const marker of requiredOutlineTreeMarkers) {
+    if (!css.includes(marker)) {
+        throw new Error(`Markdown outline hierarchy marker is missing: ${marker}`);
+    }
+}
+
+const activeOutlineRule = css.match(/\.toc-item a\.active\s*\{([^}]*)\}/)?.[1] ?? '';
+if (activeOutlineRule.includes('margin-left')) {
+    throw new Error('Markdown outline active item must not shift horizontally.');
+}
+
 const requiredSimplifiedChineseUiMarkers = [
     'label: \'分栏编辑\'',
     'tooltip: \'左右分栏编辑 Markdown\'',

@@ -17,8 +17,8 @@
 
 项目以原作者仓库的 `v1.9.98`（提交 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4`）作为当前集成基线，并在此基础上保留本地安全修复和 Markdown 主题增强；`v1.9.97` 仍作为历史功能对比基线。主题增强用一份版本化 Less 主题生成单一 CSS，供本扩展与 Markdown Preview Enhanced（MPE）共同使用。
 
-> 安全提示：`1.9.98-local.14` 当前锁文件在线审计为 0 项漏洞；Markdown Webview 已改为随 VSIX 加载本地 KaTeX CSS/字体，并对消息、Markdown、图片、PDF、反馈、表格编辑和 StyleStorage 设置边界。三个 IDE 的真实交互仍需现场验收。
-> 当前版本是本地开发补丁 `1.9.98-local.14`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
+> 安全提示：`1.9.98-local.15` 当前锁文件在线审计为 0 项漏洞；Markdown Webview 已改为随 VSIX 加载本地 KaTeX CSS/字体，并对消息、Markdown、图片、PDF、反馈、表格编辑和 StyleStorage 设置边界。三个 IDE 的真实交互仍需现场验收。
+> 当前版本是本地开发补丁 `1.9.98-local.15`，尚未发布到 VS Code Marketplace 或 Open VSX。请不要将本仓库误认为原作者的官方商店扩展。
 
 ## 功能概览
 
@@ -39,7 +39,7 @@
 - 左右分栏编辑与同步滚动。
 - 预览编辑模式：可在渲染后的预览区域修改 Markdown。
 - 支持 GitHub Flavored Markdown，包括表格、任务列表、代码块和脚注。
-- 自动目录面板，便于浏览长文档。
+- 自动目录面板按 H1–H6 以固定 20px 级距显示，并为深层标题提供树形引导、整行高亮和长中文标题换行，便于浏览长文档。
 - 支持相对链接、本地图片、代码块复制与行号。
 - 本地补丁版支持全局 `<mark>` 高亮；Markdown 正文只需写 `<mark>重点内容</mark>`。
 - 对 Markdown 和表格外部输入执行 HTML/属性净化；保存前检测文件是否被外部修改，避免静默覆盖。
@@ -131,12 +131,13 @@
 
 ## 相对上游 v1.9.97 的增强
 
-当前本地包为 `1.9.98-local.14`；集成基线为上游 `v1.9.98`（`fd6ed727`），功能差异仍以历史上游 `v1.9.97`（`cb1c765`）作为完整对照，XLSX、CSV、TSV 原有编辑能力保持不变，新增与修复如下：
+当前本地包为 `1.9.98-local.15`；集成基线为上游 `v1.9.98`（`fd6ed727`），功能差异仍以历史上游 `v1.9.97`（`cb1c765`）作为完整对照，XLSX、CSV、TSV 原有编辑能力保持不变，新增与修复如下：
 
 | 模块 | 新增或修改 | 实际作用 |
 | --- | --- | --- |
 | Markdown 外观 | 全局 `<mark>` 配置、h1-h6 标题颜色、预览背景/文字/字号/行高配置 | 统一重点样式、标题层级和阅读体验，无需逐篇写内联样式 |
 | Markdown 工具栏 | 固定头部按主工具栏与格式工具栏的实际总高度避让内容区 | Split Edit、Preview Edit 下格式工具栏不再被内容区覆盖或裁切 |
+| Markdown 左侧大纲 | H1-H6 固定 20px 级距、树形引导、整行高亮和长标题换行 | 深层标题层级更易辨识，活动标题不再横向跳位 |
 | 核心界面语言 | 工具栏、悬停提示、格式工具栏和设置字段使用简体中文 | 日常操作不再混用英文；技术缩写和配置键保持兼容 |
 | 输入边界治理 | 统一 Webview message schema、Markdown/PDF/反馈/图片 payload、表格编辑、坐标和 StyleStorage 容量限制 | 超限直接拒绝，拒绝前不写文件、不发网络请求、不更新状态 |
 | 本地资源与路径 | KaTeX CSS/字体随 VSIX 提供；Markdown 图片使用 realpath containment 和可信外部根目录 | 支持离线公式渲染，拒绝未授权 symlink 越界资源 |
@@ -172,18 +173,18 @@ npm run verify:local-patch
 npm run verify:theme-system
 npm run verify:docs
 npm test  # 首次运行会下载对应 VS Code Extension Host
-npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.14.vsix"
+npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.15.vsix"
 ```
 
-手动安装或将旧版本替换为 `.11`：
+手动安装或将旧版本替换为 `.14`：
 
-1. 下载或选择 `muhammad-ahmad.xlsx-viewer-1.9.98-local.14.vsix`。
+1. 下载或选择 `muhammad-ahmad.xlsx-viewer-1.9.98-local.15.vsix`。
 2. 在 VS Code、Cursor 或 Antigravity 按 `⌘ Command + ⇧ Shift + P`，执行 `Extensions: Install from VSIX...`。
-3. 选择该 VSIX；出现升级提示时确认。扩展 ID 相同且 `.11` 版本更高，无需先卸载旧版本。
+3. 选择该 VSIX；出现升级提示时确认。扩展 ID 相同且 `.15` 版本更高，无需先卸载旧版本。
 4. 再按 `⌘ Command + ⇧ Shift + P`，执行 `Developer: Reload Window`。
 5. 关闭并重新打开 Markdown 文件，点击 `Split Edit`，确认右侧预览与表格样式。
 
-当前 `.14` 发布候选包为 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.14.vsix`；包外 SHA-256 为 `a2f284bc0e9303624ab67f9c6fbecadeb4bcf39c87e0dca90c2f9843002196cf`，VSIX 内文档不自引用自身哈希。
+当前 `.15` 发布包为 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.15.vsix`；包外 SHA-256 为 `6868bb33e6c4ba476c970f681b98c581fd808934508be039390f4e4f5000fa99`。VSIX 内文档不自引用自身哈希。
 
 > 注意：当前补丁仍沿用上游扩展标识 `muhammad-ahmad.xlsx-viewer`，因此不能与原官方扩展并存。安装本地 VSIX 会替换同一 IDE 中的官方版；重新安装官方扩展即可回退。
 
