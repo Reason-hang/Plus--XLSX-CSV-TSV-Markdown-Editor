@@ -157,7 +157,7 @@ npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.
 
 通过 IDE 的 `Extensions: Install from VSIX...` 安装；不要直接把解压目录复制到 `~/.vscode/extensions`、`~/.cursor/extensions` 或 `~/.antigravity/extensions`。安装后关闭该扩展的自动更新，避免被官方版本覆盖。
 
-当前 `.15` 发布包为 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.15.vsix`；包外 SHA-256 为 `6868bb33e6c4ba476c970f681b98c581fd808934508be039390f4e4f5000fa99`。VSIX 内文档不自引用自身哈希。
+当前 `.15` 发布包为 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.15.vsix`；包外 SHA-256 为 `ccd606d0cbad2001a299391aa868539731d97c294cf96e3ad2ff31da058318e6`。VSIX 内文档不自引用自身哈希。
 
 ## 8. 验收、回退与维护成本
 
