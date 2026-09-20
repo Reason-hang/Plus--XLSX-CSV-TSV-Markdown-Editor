@@ -926,6 +926,14 @@ function updateToc(tokens: any[]) {
     tocBody.innerHTML = buildToc(tokens);
 }
 
+function focusWithoutViewportScroll(element: HTMLElement | null) {
+    if (!element) return;
+    // Both edit modes change the visible layout.  Focusing immediately is
+    // useful for typing, but the browser must not scroll the outer Webview to
+    // reveal a just-resized pane.
+    element.focus({ preventScroll: true });
+}
+
 // ===== Edit Mode (Split View) =====
 function setEditMode(enabled: boolean) {
     isEditMode = enabled;
@@ -980,7 +988,7 @@ function setEditMode(enabled: boolean) {
             if (editor) {
                 editor.scrollTop = 0;
                 editor.scrollLeft = 0;
-                editor.focus();
+                focusWithoutViewportScroll(editor);
                 editor.setSelectionRange(0, 0);
             }
             if (preview) preview.scrollTop = 0;
@@ -1051,7 +1059,7 @@ function setPreviewEditMode(enabled: boolean) {
             preview.contentEditable = 'true';
             enhancePreviewTablesForEditing();
             initializePreviewHistory();
-            preview.focus();
+            focusWithoutViewportScroll(preview);
         }
     } else {
         // Exit preview edit mode

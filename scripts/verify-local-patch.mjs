@@ -112,6 +112,19 @@ for (const marker of requiredStickyToolbarMarkers) {
     }
 }
 
+const requiredEditViewportMarkers = [
+    'function focusWithoutViewportScroll',
+    'element.focus({ preventScroll: true });',
+    'height: 100vh;',
+    'min-height: 0;'
+];
+
+for (const marker of requiredEditViewportMarkers) {
+    if (![webview, css].some(source => source.includes(marker))) {
+        throw new Error(`Markdown edit-mode viewport guard is missing: ${marker}`);
+    }
+}
+
 const requiredSimplifiedChineseUiMarkers = [
     'label: \'分栏编辑\'',
     'tooltip: \'左右分栏编辑 Markdown\'',
