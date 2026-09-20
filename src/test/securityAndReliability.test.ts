@@ -63,6 +63,20 @@ describe('security and reliability regressions', () => {
         assert.equal(validateWebviewMessage({ command: 'unknown' }, 'markdown').ok, false);
         assert.equal(validateWebviewMessage({ command: 'saveMarkdown', text: 'x'.repeat(8 * 1024 * 1024 + 1) }, 'markdown').ok, false);
         assert.equal(validateWebviewMessage({
+            command: 'reportScrollDiagnostics',
+            phase: 'editor-input',
+            epoch: 1,
+            scrollTops: { editor: 0, preview: 20, content: 0, document: 0 },
+            settings: { syncScroll: false, stickyToolbar: true }
+        }, 'markdown').ok, true);
+        assert.equal(validateWebviewMessage({
+            command: 'reportScrollDiagnostics',
+            phase: 'editor-input',
+            epoch: -1,
+            scrollTops: { editor: 0, preview: 20, content: 0, document: 0 },
+            settings: { syncScroll: false, stickyToolbar: true }
+        }, 'markdown').ok, false);
+        assert.equal(validateWebviewMessage({
             command: 'saveXlsxEdits',
             sheetIndex: 0,
             edits: [{ row: Number.NaN, col: 1, value: 'bad' }],

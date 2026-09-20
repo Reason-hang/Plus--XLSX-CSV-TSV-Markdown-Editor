@@ -121,13 +121,27 @@ const requiredEditViewportMarkers = [
     'function focusWithoutViewportScroll',
     'element.focus({ preventScroll: true });',
     'height: 100vh;',
-    'min-height: 0;'
+    'min-height: 0;',
+    'body:not(.sticky-toolbar-enabled).edit-mode',
+    'body:not(.sticky-toolbar-enabled).edit-mode #content',
+    'body.edit-mode #content',
+    'overflow-anchor: none;',
+    'let renderEpoch = 0;',
+    'let activeRenderEpoch = 0;',
+    "command: 'reportScrollDiagnostics'",
+    "if (target === document || target === document.documentElement || target === document.body)",
+    "case 'reportScrollDiagnostics'",
+    'if (activeRenderEpoch === renderEpoch) return;'
 ];
 
 for (const marker of requiredEditViewportMarkers) {
-    if (![webview, css].some(source => source.includes(marker))) {
+    if (![provider, webview, css, messageSchema].some(source => source.includes(marker))) {
         throw new Error(`Markdown edit-mode viewport guard is missing: ${marker}`);
     }
+}
+
+if (css.includes('body {\n    overflow-anchor: none;')) {
+    throw new Error('Markdown must not disable scroll anchoring globally.');
 }
 
 const requiredOutlineTreeMarkers = [

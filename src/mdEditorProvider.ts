@@ -31,6 +31,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
     private readonly markdownThemeService = new MarkdownThemeService();
     private readonly webviewPanels = new Set<vscode.WebviewPanel>();
     private readonly themeOutput = vscode.window.createOutputChannel('XLSX Viewer Markdown Theme');
+    private readonly scrollDiagnosticsOutput = vscode.window.createOutputChannel('XLSX Viewer Markdown Scroll Diagnostics');
     private readonly markdownThemeChangeDisposable: vscode.Disposable;
 
     constructor(private readonly context: vscode.ExtensionContext) {
@@ -47,6 +48,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
         this.markdownThemeChangeDisposable.dispose();
         this.markdownThemeService.dispose();
         this.themeOutput.dispose();
+        this.scrollDiagnosticsOutput.dispose();
         this.webviewPanels.clear();
     }
 
@@ -512,6 +514,18 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                             console.error('Failed resolving markdown image URIs:', err);
                         }
                         break;
+
+                    case 'reportScrollDiagnostics': {
+                        const scrollTops = message.scrollTops as Record<string, number>;
+                        const settings = message.settings as { syncScroll: boolean; stickyToolbar: boolean };
+                        this.scrollDiagnosticsOutput.appendLine(
+                            `[${new Date().toISOString()}] ${message.phase} epoch=${message.epoch} ` +
+                            `editor=${scrollTops.editor} preview=${scrollTops.preview} ` +
+                            `content=${scrollTops.content} document=${scrollTops.document} ` +
+                            `syncScroll=${settings.syncScroll} stickyToolbar=${settings.stickyToolbar}`
+                        );
+                        break;
+                    }
 
                     case 'updateSettings':
                         try {

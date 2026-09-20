@@ -101,6 +101,42 @@ const resolvedImageUriCache = new Map<string, string>();
 let documentUri = '';
 let documentDirUri = '';
 let workspaceFolderUri: string | null = null;
+let renderEpoch = 0;
+let activeRenderEpoch = 0;
+let renderCleanupFrame: number | null = null;
+const scrollDiagnosticLimit = 120;
+let scrollDiagnosticCount = 0;
+let scrollDiagnosticUntil = 0;
+
+function reportScrollDiagnostic(phase: string, force = false) {
+    if (!isEditMode || scrollDiagnosticCount >= scrollDiagnosticLimit) {
+        return;
+    }
+    if (!force && Date.now() > scrollDiagnosticUntil) {
+        return;
+    }
+
+    const editor = $('markdownEditor') as HTMLTextAreaElement | null;
+    const preview = $('markdownPreview');
+    const content = $('content');
+    const documentScroller = document.scrollingElement;
+    vscode.postMessage({
+        command: 'reportScrollDiagnostics',
+        phase,
+        epoch: renderEpoch,
+        scrollTops: {
+            editor: Math.max(0, Math.round(editor?.scrollTop || 0)),
+            preview: Math.max(0, Math.round(preview?.scrollTop || 0)),
+            content: Math.max(0, Math.round(content?.scrollTop || 0)),
+            document: Math.max(0, Math.round(documentScroller?.scrollTop || 0))
+        },
+        settings: {
+            syncScroll: currentSettings.syncScroll,
+            stickyToolbar: currentSettings.stickyToolbar
+        }
+    });
+    scrollDiagnosticCount++;
+}
 
 // Turndown (HTML -> Markdown)
 const turndownService = new TurndownService({
@@ -626,7 +662,11 @@ md.renderer.rules.image = function (tokens: any, idx: number, options: any, env:
     return defaultImageRender(tokens, idx, options, env, self);
 };
 
-function requestLocalImageResolution() {
+function requestLocalImageResolution(expectedRenderEpoch?: number) {
+    if (expectedRenderEpoch !== undefined && expectedRenderEpoch !== renderEpoch) {
+        return;
+    }
+
     const preview = $('markdownPreview');
     if (!preview) return;
 
@@ -813,7 +853,11 @@ function buildToc(tokens: any[]) {
 }
 
 // ===== Rendering =====
-function renderMermaidFlowcharts() {
+function renderMermaidFlowcharts(expectedRenderEpoch?: number) {
+    if (expectedRenderEpoch !== undefined && expectedRenderEpoch !== renderEpoch) {
+        return;
+    }
+
     const mermaidLib = (md as any).mermaid;
     if (!mermaidLib) return;
 
@@ -832,6 +876,10 @@ function renderMermaidFlowcharts() {
     if (nodes.length > 0) {
         mermaidLib.run({
             nodes: Array.from(nodes) as any
+        }).then(() => {
+            if (expectedRenderEpoch === undefined || expectedRenderEpoch === renderEpoch) {
+                refreshSyncMetrics();
+            }
         }).catch((err: any) => {
             console.error('Mermaid render error:', err);
         });
@@ -887,9 +935,28 @@ function sanitizeRenderedMarkdownHtml(html: string): string {
     return template.innerHTML;
 }
 
+function finishRenderTransaction(expectedRenderEpoch: number) {
+    if (renderCleanupFrame !== null) {
+        cancelAnimationFrame(renderCleanupFrame);
+    }
+
+    renderCleanupFrame = requestAnimationFrame(() => {
+        renderCleanupFrame = requestAnimationFrame(() => {
+            if (expectedRenderEpoch === renderEpoch) {
+                activeRenderEpoch = 0;
+                reportScrollDiagnostic('render-transaction-complete', true);
+            }
+            renderCleanupFrame = null;
+        });
+    });
+}
+
 function renderMarkdown(content: string) {
     const preview = $('markdownPreview');
     if (preview) {
+        const currentRenderEpoch = ++renderEpoch;
+        activeRenderEpoch = currentRenderEpoch;
+        reportScrollDiagnostic('render-before-replace', true);
         const savedScrollTop = preview.scrollTop;
         const savedScrollLeft = preview.scrollLeft;
         const env: any = {};
@@ -904,17 +971,24 @@ function renderMarkdown(content: string) {
         preview.querySelectorAll('img').forEach((node) => {
             if (!(node instanceof HTMLImageElement)) return;
             if (!node.complete) {
-                node.addEventListener('load', refreshDataLineCache, { once: true });
+                node.addEventListener('load', () => {
+                    if (currentRenderEpoch === renderEpoch) {
+                        refreshSyncMetrics();
+                    }
+                }, { once: true });
             }
         });
         updateToc(tokens);
-        refreshSyncMetrics();
         requestAnimationFrame(() => {
+            if (currentRenderEpoch !== renderEpoch) return;
+            reportScrollDiagnostic('render-after-replace', true);
             updateScrollSpy();
             updateProgressBar();
             reapplySearch();
-            requestLocalImageResolution();
-            renderMermaidFlowcharts();
+            requestLocalImageResolution(currentRenderEpoch);
+            renderMermaidFlowcharts(currentRenderEpoch);
+            refreshSyncMetrics();
+            finishRenderTransaction(currentRenderEpoch);
         });
     }
 }
@@ -1001,6 +1075,7 @@ function setEditMode(enabled: boolean) {
                 }
                 if (preview) preview.scrollTop = 0;
                 if (container) container.scrollLeft = 0;
+                refreshSyncMetrics();
             }, 50);
         });
     } else {
@@ -1205,6 +1280,8 @@ function onEditorInput() {
     if (!editor) return;
 
     currentContent = editor.value;
+    scrollDiagnosticUntil = Date.now() + 1000;
+    reportScrollDiagnostic('editor-input', true);
 
     // Debounced live preview
     debouncedRender(currentContent);
@@ -1367,9 +1444,16 @@ function refreshEditorLineCache() {
 }
 
 function refreshSyncMetrics() {
+    updateCachedLineHeight();
+    if (!currentSettings.syncScroll || isPreviewEditMode || !isEditMode) {
+        cachedDataLineElements = [];
+        cachedPreviewLineMap = [];
+        cachedEditorLineMap = [];
+        return;
+    }
+
     refreshDataLineCache();
     refreshEditorLineCache();
-    updateCachedLineHeight();
 }
 
 function refreshDataLineCache() {
@@ -1401,6 +1485,7 @@ function updateCachedLineHeight() {
 
 function syncEditorToPreview() {
     if (!currentSettings.syncScroll || isPreviewEditMode) return;
+    if (activeRenderEpoch === renderEpoch) return;
     if (activeScrollSource === 'preview') return;
 
     activeScrollSource = 'editor';
@@ -1427,6 +1512,7 @@ function syncEditorToPreview() {
 
 function syncPreviewToEditor() {
     if (!currentSettings.syncScroll || isPreviewEditMode) return;
+    if (activeRenderEpoch === renderEpoch) return;
     if (activeScrollSource === 'editor') return;
 
     activeScrollSource = 'preview';
@@ -3695,10 +3781,21 @@ function wireEditor() {
     editor.addEventListener('input', onEditorInput);
 
     editor.addEventListener('scroll', throttledSyncEditorToPreview, { passive: true });
+    editor.addEventListener('scroll', () => reportScrollDiagnostic('editor-scroll'), { passive: true });
 
     if (preview) {
         preview.addEventListener('scroll', throttledSyncPreviewToEditor, { passive: true });
+        preview.addEventListener('scroll', () => reportScrollDiagnostic('preview-scroll'), { passive: true });
     }
+
+    const content = $('content');
+    content?.addEventListener('scroll', () => reportScrollDiagnostic('content-scroll'), { passive: true });
+    document.addEventListener('scroll', (event) => {
+        const target = event.target;
+        if (target === document || target === document.documentElement || target === document.body) {
+            reportScrollDiagnostic('document-scroll');
+        }
+    }, { passive: true, capture: true });
 
     window.addEventListener('resize', refreshSyncMetrics);
 

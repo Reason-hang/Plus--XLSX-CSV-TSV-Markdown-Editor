@@ -241,6 +241,46 @@ body:not(.sticky-toolbar-enabled) .toc-panel {
     overflow: visible;
 }
 
+/* Split edit must always keep scrolling inside its two panes.  Letting the
+   non-sticky branch promote #content to a scroller makes a preview rebuild
+   compete with the outer Webview's scroll anchoring. */
+body:not(.sticky-toolbar-enabled).edit-mode {
+    display: flex;
+    height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+}
+
+body:not(.sticky-toolbar-enabled).edit-mode #content {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+body:not(.sticky-toolbar-enabled).edit-mode .markdown-container {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+body:not(.sticky-toolbar-enabled).edit-mode .markdown-container.split-view .markdown-preview,
+body:not(.sticky-toolbar-enabled).edit-mode .markdown-container.split-view .markdown-editor,
+body:not(.sticky-toolbar-enabled).edit-mode .markdown-container.split-view .toc-panel {
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+/* Only the split-edit scroll containers opt out of browser scroll anchoring.
+   Normal preview reading keeps Chromium's default anchoring behavior. */
+body.edit-mode #content,
+body.edit-mode .editor-wrapper,
+body.edit-mode .markdown-preview,
+body.edit-mode .markdown-editor {
+    overflow-anchor: none;
+}
+
 
 /* ===== Loading Indicator ===== */
 .loading-indicator {

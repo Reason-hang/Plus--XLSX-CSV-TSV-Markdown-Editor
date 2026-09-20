@@ -42,6 +42,7 @@ const MARKDOWN_COMMANDS = new Set([
     'openExternal',
     'openRelativeFile',
     'requestFreshData',
+    'reportScrollDiagnostics',
     'resolveImageUris',
     'restoreVersion',
     'saveMarkdown',
@@ -360,6 +361,23 @@ export function validateWebviewMessage(message: unknown, surface: WebviewSurface
             for (const source of message.sources) {
                 const result = validateString(source, 'source', WEBVIEW_LIMITS.maxSourceLength);
                 if (!result.ok) {return result;}
+            }
+            return pass();
+        }
+        case 'reportScrollDiagnostics': {
+            const phase = validateString(message.phase, '诊断阶段', 64);
+            if (!phase.ok) {return phase;}
+            const epoch = validateFiniteInteger(message.epoch, '渲染批次', 0, Number.MAX_SAFE_INTEGER);
+            if (!epoch.ok) {return epoch;}
+            if (!isRecord(message.scrollTops)) {return reject('WEBVIEW_FIELD_INVALID', 'scrollTops 必须是对象。');}
+            for (const key of ['editor', 'preview', 'content', 'document']) {
+                const value = validateFiniteInteger(message.scrollTops[key], `scrollTops.${key}`, 0, Number.MAX_SAFE_INTEGER);
+                if (!value.ok) {return value;}
+            }
+            if (!isRecord(message.settings)
+                || typeof message.settings.syncScroll !== 'boolean'
+                || typeof message.settings.stickyToolbar !== 'boolean') {
+                return reject('WEBVIEW_FIELD_INVALID', '诊断 settings 必须包含布尔值 syncScroll 和 stickyToolbar。');
             }
             return pass();
         }

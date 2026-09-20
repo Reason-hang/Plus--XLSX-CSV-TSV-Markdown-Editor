@@ -26,12 +26,22 @@
 | 分支 | codex/release-1.9.98-local.7（本地修复工作分支，已推送到 `personal/main`） |
 | 上游集成基线 | v1.9.98，`fd6ed727bf241f6fd2c1380a609e7c728e108ee4` |
 | 历史对比基线 | v1.9.97，`cb1c765c0da95d49ecd50ec3b0e26ca7ca185ebb` |
-| 当前版本 | 1.9.98-local.15 |
+| 当前版本 | 1.9.98-local.16 |
 | 远端发布目标 | personal/main |
 | 主题实现 | 已有外置 CSS、manifest、监听、回退和 MPE 适配基础 |
 | 真实 IDE 验收 | `.12` 仍需在 VS Code、Cursor、Antigravity 中人工执行 |
 
 ## 决策记录
+
+### D-023：分栏编辑以内部滚动与渲染批次隔离消除位置竞争
+
+- 风险等级：高。
+- 背景：用户实测关闭同步滚动后，Markdown 分栏编辑输入仍会出现整页上下跳动，说明单独修补双向同步并不能解决问题。
+- 证据：输入经 150ms 防抖后会完整替换预览 DOM，并伴随位置恢复、行映射测量、图片解析和 Mermaid 后处理；非固定工具栏分支此前会让 `#content` 成为外层滚动容器。
+- 决策：分栏编辑无论工具栏是否固定，都将滚动限制在编辑区/预览区；每次渲染使用 `renderEpoch`，在两帧稳定前隔离同步位置回写，旧批次异步任务不得刷新当前测量状态。
+- 诊断：新增受统一 Webview schema 校验的滚动诊断输出通道，记录 editor、preview、content、document 四层 `scrollTop`、批次号和设置状态；用于真实 IDE 复现时确认实际滚动所有权。
+- 验证方式：类型检查、Lint、构建、安全/本地补丁/主题/文档验证、Extension Host 测试，以及 VS Code、Cursor、Antigravity 中的真实连续输入验收。
+- 残余风险：macOS 本机 Extension Host 的 SIGABRT 不能替代真实界面验证；若诊断显示跳动属于 IDE 宿主而非 Webview，需重新评估修复方向。
 
 ### D-022：以固定级距强化 Markdown 左侧大纲层级
 
