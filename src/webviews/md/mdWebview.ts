@@ -23,7 +23,6 @@ import hljs from 'highlight.js';
 import { ThemeManager } from '../shared/themeManager';
 import { SettingsManager } from '../shared/settingsManager';
 import { ToolbarManager } from '../shared/toolbarManager';
-import { applyToolbarLayout } from '../shared/toolbarLayout';
 import { Utils } from '../shared/utils';
 import { MdToPdfExporter } from './mdToPdfExporter';
 import { Icons } from '../shared/icons';
@@ -1821,34 +1820,7 @@ function applySettings(settings: any, persist = false) {
 
     refreshSyncMetrics();
 
-    // Sticky toolbar
-    applyToolbarLayout(toolbarManager, {
-        stickyToolbar: currentSettings.stickyToolbar,
-        scrollTarget: '#content'
-    });
-
-    if (toolbarManager) {
-        // Handle formatting toolbar specifically for MD so it scrolls with the content
-        const fmtToolbar = $('formattingToolbar');
-        const contentArea = $('content');
-        const mainToolbar = $('toolbar');
-        if (fmtToolbar && contentArea) {
-            if (currentSettings.stickyToolbar) {
-                if (mainToolbar && mainToolbar.parentNode) {
-                    mainToolbar.parentNode.insertBefore(fmtToolbar, mainToolbar.nextSibling);
-                } else {
-                    document.body.insertBefore(fmtToolbar, contentArea);
-                }
-            } else {
-                if (mainToolbar && mainToolbar.parentNode === contentArea) {
-                    contentArea.insertBefore(fmtToolbar, mainToolbar.nextSibling);
-                } else {
-                    contentArea.insertBefore(fmtToolbar, contentArea.firstChild);
-                }
-            }
-        }
-        scheduleMarkdownHeaderHeightUpdate();
-    }
+    applyMarkdownToolbarLayout(currentSettings.stickyToolbar);
 
     // Preview position (left or right) - only affects split-view, not outline
     if (container && isEditMode && !isPreviewEditMode) {
@@ -2188,15 +2160,16 @@ function reorderMdToolbarButtons() {
     }
 }
 
-// ===== Header Height =====
-function updateHeaderHeight() {
-    if (toolbarManager) {
-        toolbarManager.updateHeaderHeight();
-    }
+// ===== Markdown Toolbar Layout =====
+function applyMarkdownToolbarLayout(stickyToolbar: boolean) {
+    document.body.classList.toggle('sticky-toolbar-enabled', stickyToolbar);
+    // Markdown's toolbar host stays in flex flow, so content sizing never
+    // depends on an asynchronously measured fixed header.
+    document.documentElement.style.setProperty('--header-height', '0px');
 }
 
 function scheduleMarkdownHeaderHeightUpdate() {
-    requestAnimationFrame(() => updateHeaderHeight());
+    applyMarkdownToolbarLayout(currentSettings.stickyToolbar);
 }
 
 // ===== Message Handler =====
@@ -4237,7 +4210,7 @@ initLightbox();
 initSearchOverlay();
 initScrollSpy();
 initResizeHandles();
-updateHeaderHeight();
+applyMarkdownToolbarLayout(currentSettings.stickyToolbar);
 
 // Ensure settings are applied once toolbar is ready
 if (currentSettings) {

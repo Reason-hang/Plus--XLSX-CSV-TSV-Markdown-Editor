@@ -1033,9 +1033,10 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
         <body>
             <div id="readingProgressBar" class="reading-progress-bar"></div>
             <div class="header-background"></div>
-            <div class="toolbar-wrapper"><div class="toolbar" id="toolbar"></div></div>
+            <div id="markdownToolbarHost">
+                <div class="toolbar-wrapper"><div class="toolbar" id="toolbar"></div></div>
 
-            <div id="formattingToolbar" class="formatting-toolbar hidden">
+                <div id="formattingToolbar" class="formatting-toolbar hidden">
                 <div class="fmt-group">
                     <button class="fmt-btn" data-format="bold" title="加粗（Ctrl+B）"></button>
                     <button class="fmt-btn" data-format="italic" title="斜体（Ctrl+I）"></button>
@@ -1087,6 +1088,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                     <button class="fmt-btn" data-format="sortLines" title="按 A-Z 排序行"></button>
                     <button class="fmt-btn" data-format="trimWhitespace" title="删除行尾空白"></button>
                     <button class="fmt-btn" data-format="jumpToLine" title="跳转到指定行（Ctrl+G）"></button>
+                </div>
                 </div>
             </div>
 

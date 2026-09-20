@@ -26,7 +26,7 @@
 | 分支 | codex/release-1.9.98-local.7（本地修复工作分支，已推送到 `personal/main`） |
 | 上游集成基线 | v1.9.98，`fd6ed727bf241f6fd2c1380a609e7c728e108ee4` |
 | 历史对比基线 | v1.9.97，`cb1c765c0da95d49ecd50ec3b0e26ca7ca185ebb` |
-| 当前版本 | 1.9.98-local.13 |
+| 当前版本 | 1.9.98-local.14 |
 | 远端发布目标 | personal/main |
 | 主题实现 | 已有外置 CSS、manifest、监听、回退和 MPE 适配基础 |
 | 真实 IDE 验收 | `.12` 仍需在 VS Code、Cursor、Antigravity 中人工执行 |

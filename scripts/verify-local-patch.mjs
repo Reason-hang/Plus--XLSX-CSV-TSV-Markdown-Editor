@@ -96,20 +96,25 @@ for (const marker of requiredSourceMarkers) {
     }
 }
 
-const requiredStickyToolbarMarkers = [
-    'body.sticky-toolbar-enabled .toolbar-wrapper',
-    'overflow: visible;',
-    'body.sticky-toolbar-enabled .formatting-toolbar',
-    'position: static;',
-    'getLayoutHost()',
-    'this.resizeObserver.observe(layoutHost);',
-    'layoutHost.getBoundingClientRect().height'
+const requiredMarkdownToolbarHostMarkers = [
+    'id="markdownToolbarHost"',
+    '#markdownToolbarHost',
+    'flex: 1 1 0;',
+    'function applyMarkdownToolbarLayout',
+    "document.body.classList.toggle('sticky-toolbar-enabled', stickyToolbar);"
 ];
 
-for (const marker of requiredStickyToolbarMarkers) {
-    if (![webview, css, sharedThemeCss, toolbarManager].some(source => source.includes(marker))) {
-        throw new Error(`Markdown sticky-toolbar layout marker is missing: ${marker}`);
+for (const marker of requiredMarkdownToolbarHostMarkers) {
+    if (![provider, webview, css].some(source => source.includes(marker))) {
+        throw new Error(`Markdown toolbar host layout marker is missing: ${marker}`);
     }
+}
+
+if (
+    webview.includes('applyToolbarLayout(toolbarManager') ||
+    webview.includes('mainToolbar.parentNode.insertBefore(fmtToolbar')
+) {
+    throw new Error('Markdown must not reparent its format toolbar through the shared fixed-header layout.');
 }
 
 const requiredEditViewportMarkers = [
