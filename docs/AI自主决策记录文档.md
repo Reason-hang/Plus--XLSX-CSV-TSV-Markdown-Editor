@@ -29,9 +29,19 @@
 | 当前版本 | 1.9.98-local.16 |
 | 远端发布目标 | personal/main |
 | 主题实现 | 已有外置 CSS、manifest、监听、回退和 MPE 适配基础 |
-| 真实 IDE 验收 | `.12` 仍需在 VS Code、Cursor、Antigravity 中人工执行 |
+| 真实 IDE 验收 | 用户已在真实 `.16` VSIX 中确认分栏编辑输入不再整页跳动；三 IDE 全量功能组合验收仍需持续补证 |
 
 ## 决策记录
+
+### D-024：Preview Edit 先保证源文件保真，再扩展可视编辑范围
+
+- 风险等级：高。
+- 背景：现场 Markdown 文件在 Preview Edit 保存后，Mermaid 源码变为渲染 CSS，` ```text ` 代码块混入语言标签/复制按钮文字，Tab 缩进布局坍缩；同时正文目录多数链接跳回开头。
+- 证据：围栏渲染会生成 Mermaid SVG/CSS 或 `.code-block` 工具节点，而 `performSave()` 将整个预览 clone 交给 `Turndown` 后发送 `saveMarkdown`；Provider 会原子写入该文本。正文目录的前十个 URL 片段与完整标题生成的 ID 不一致，而内部锚点目前交给浏览器默认处理。
+- 决策：不通过新增 DOM 清理选择器掩盖问题。下一修复先在发送保存消息前阻断含围栏代码/Mermaid 的 Preview Edit 保存，并提示改用源码或分栏编辑；目录跳转先精确查找，失败时仅做唯一的保守标题回退，不能猜测或跳到第一个相似标题。
+- 长期方向：将可视编辑改为基于 Markdown token/source range 的受限最小文本补丁；渲染 DOM 不再作为任意 Markdown 源文件的通用保存模型。
+- 验证方式：临时副本中比较保存前后 SHA-256、围栏内容和 Tab；对精确、唯一回退、重名、不存在四类锚点做回归；修复后重新审计全部 Preview Edit 保存入口。
+- 残余风险：短期门禁会限制部分 Preview Edit 的保存能力，但它比继续允许静默破坏用户文件更可控；未经用户授权不得尝试覆盖恢复现场原文件。
 
 ### D-023：分栏编辑以内部滚动与渲染批次隔离消除位置竞争
 
@@ -41,6 +51,7 @@
 - 决策：分栏编辑无论工具栏是否固定，都将滚动限制在编辑区/预览区；每次渲染使用 `renderEpoch`，在两帧稳定前隔离同步位置回写，旧批次异步任务不得刷新当前测量状态。
 - 诊断：新增受统一 Webview schema 校验的滚动诊断输出通道，记录 editor、preview、content、document 四层 `scrollTop`、批次号和设置状态；用于真实 IDE 复现时确认实际滚动所有权。
 - 验证方式：类型检查、Lint、构建、安全/本地补丁/主题/文档验证、Extension Host 测试，以及 VS Code、Cursor、Antigravity 中的真实连续输入验收。
+- 实际验收补记：用户已在真实 `.16` VSIX 中复测，确认分栏编辑输入时不再出现整页上下跳动；这确认当前核心故障已消失，但不替代三 IDE 全量组合和极长文档性能验收。
 - 残余风险：macOS 本机 Extension Host 的 SIGABRT 不能替代真实界面验证；若诊断显示跳动属于 IDE 宿主而非 Webview，需重新评估修复方向。
 
 ### D-022：以固定级距强化 Markdown 左侧大纲层级
