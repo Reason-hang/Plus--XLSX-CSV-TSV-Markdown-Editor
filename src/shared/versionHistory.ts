@@ -3,9 +3,14 @@ import { createHash } from 'crypto';
 import * as vscode from 'vscode';
 
 export const VERSION_HISTORY_RETENTION_MS = 48 * 60 * 60 * 1000;
-export const VERSION_HISTORY_SNAPSHOT_DEBOUNCE_MS = 30_000;
 export const VERSION_HISTORY_MAX_ENTRIES = 200;
 export const VERSION_HISTORY_MAX_TOTAL_BYTES = 50 * 1024 * 1024;
+
+export function isSafeSnapshotFile(value: unknown, extensions: readonly string[]): value is string {
+    return typeof value === 'string' && value === path.basename(value) &&
+        /^[A-Za-z0-9._-]+$/.test(value) &&
+        extensions.some(extension => value.toLowerCase().endsWith(`.${extension}`));
+}
 
 function getHistoryKey(filePath: string): string {
     return createHash('sha1').update(filePath).digest('hex');

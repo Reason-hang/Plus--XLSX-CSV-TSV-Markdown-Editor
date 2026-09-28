@@ -2,10 +2,10 @@
     "name": "xlsx-viewer",
     "displayName": "XLSX, CSV, TSV & Markdown Editor",
     "description": "View and edit xlsx files with colors, fonts and styles (supporting in-table editing), and view and edit CSV, TSV & Markdown files in VS Code. This is an open-source project.",
-    "version": "2.0.1-local.1",
+    "version": "2.0.1-local.2",
     "publisher": "muhammad-ahmad",
     "engines": {
-        "vscode": "^1.60.0"
+        "vscode": "^1.74.0"
     },
     "repository": {
         "type": "git",
@@ -365,11 +365,18 @@
                 },
                 "xlsxViewer.md.externalResourceRoots": {
                     "type": "array",
+                    "scope": "machine",
                     "items": {
                         "type": "string"
                     },
                     "default": [],
                     "description": "Absolute trusted directories for Markdown images outside the workspace. Symlink targets are checked after realpath resolution."
+                },
+                "xlsxViewer.md.allowRemoteImages": {
+                    "type": "boolean",
+                    "scope": "machine",
+                    "default": false,
+                    "description": "允许 Markdown 预览请求 HTTPS 远程图片；可能向图片服务器暴露 IP 与打开文档的时间。"
                 },
                 "xlsxViewer.md.previewBackgroundColor": {
                     "type": "string",
@@ -403,21 +410,25 @@
                 },
                 "xlsxViewer.md.theme.enabled": {
                     "type": "boolean",
+                    "scope": "machine",
                     "default": false,
                     "description": "启用外置 Markdown 主题 CSS。启用后仅加载已编译 CSS，不在扩展内编译 Less。"
                 },
                 "xlsxViewer.md.theme.cssFile": {
                     "type": "string",
+                    "scope": "machine",
                     "default": "",
                     "description": "外置 Markdown 主题 CSS 的绝对路径，例如 /Users/you/.../themes/markdown-theme/dist/markdown-theme.css。"
                 },
                 "xlsxViewer.md.theme.manifestFile": {
                     "type": "string",
+                    "scope": "machine",
                     "default": "",
                     "description": "可选的主题 manifest 绝对路径；留空时自动读取 CSS 同目录的 theme-manifest.json 用于 SHA-256 校验。"
                 },
                 "xlsxViewer.md.theme.watch": {
                     "type": "boolean",
+                    "scope": "machine",
                     "default": true,
                     "description": "监听外置主题 CSS 和 manifest 的变更，保存后自动刷新所有已打开的 Markdown 预览。"
                 }

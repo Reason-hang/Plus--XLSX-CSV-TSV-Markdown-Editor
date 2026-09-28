@@ -38,7 +38,7 @@ import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
 // @ts-ignore
 import mermaid from 'mermaid';
-import { hasUnsafePreviewEditSource } from './previewEditSafety';
+import { getPreviewEditTrailingNewlines, hasUnsafePreviewEditSource } from './previewEditSafety';
 import { resolveHeadingId } from './anchorNavigation';
 
 I18n.setVsCodeApi(vscode);
@@ -102,6 +102,8 @@ let isVersionPreviewMode = false;
 let isSaving = false;
 let shouldExitEditMode = false;
 let originalContent = '';
+let previewEditBaselineHtml: string | null = null;
+let previewEditBaselineMarkdown: string | null = null;
 let currentContent = '';
 let toolbarManager: ToolbarManager | null = null;
 let mdSettingsManager: SettingsManager | null = null;
@@ -866,11 +868,23 @@ function sanitizeMarkdownCopyLinkArtifacts(markdown: string): string {
         return '';
     }
 
-    return markdown.split('\n').map((line) => {
-        if (!/^\s{0,3}#{1,6}\s+/.test(line)) {
+    let fence: { marker: string; length: number } | null = null;
+    return markdown.split('\n').map(line => {
+        const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/);
+        if (fenceMatch) {
+            const marker = fenceMatch[1][0];
+            if (!fence) {
+                fence = { marker, length: fenceMatch[1].length };
+            } else if (fence.marker === marker && fenceMatch[1].length >= fence.length &&
+                line.slice(fenceMatch[0].length).trim() === '') {
+                fence = null;
+            }
             return line;
         }
-        return stripHeadingCopyLinkArtifacts(line);
+        if (fence || !/^\s{0,3}#{1,6}\s+/.test(line)) {
+            return line;
+        }
+        return line.replace(/\s*\[#\]\(#[^)\s]+(?:\s+"Copy link")?\)/g, '');
     }).join('\n');
 }
 
@@ -1174,6 +1188,30 @@ function setEditMode(enabled: boolean) {
 }
 
 // ===== Preview Edit Mode (WYSIWYG) =====
+function getPreviewEditHtml(preview: HTMLElement): string {
+    const clone = preview.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('.table-hover-tools, .heading-anchor, .code-block-header, .code-copy').forEach(node => node.remove());
+    clone.querySelectorAll('td, th').forEach(cellNode => {
+        const cell = cellNode as HTMLTableCellElement;
+        if ((cell.textContent || '').replace(/\u00a0/g, '').trim() === '') {
+            cell.innerHTML = '';
+        }
+    });
+    return clone.innerHTML;
+}
+
+function hasUnsavedMarkdownEdits(): boolean {
+    if (!isEditMode) {
+        return false;
+    }
+    if (isPreviewEditMode) {
+        const preview = $('markdownPreview');
+        return !!preview && getPreviewEditHtml(preview) !== previewEditBaselineHtml;
+    }
+    const editor = $('markdownEditor') as HTMLTextAreaElement | null;
+    return !!editor && editor.value !== originalContent;
+}
+
 function setPreviewEditMode(enabled: boolean) {
     isPreviewEditMode = enabled;
     isEditMode = enabled;
@@ -1217,9 +1255,13 @@ function setPreviewEditMode(enabled: boolean) {
             preview.contentEditable = 'true';
             enhancePreviewTablesForEditing();
             initializePreviewHistory();
+            previewEditBaselineHtml = getPreviewEditHtml(preview);
+            previewEditBaselineMarkdown = turndownService.turndown(previewEditBaselineHtml);
             preview.focus({ preventScroll: true });
         }
     } else {
+        previewEditBaselineHtml = null;
+        previewEditBaselineMarkdown = null;
         // Exit preview edit mode
         if (preview) {
             preview.contentEditable = 'false';
@@ -1348,9 +1390,28 @@ function restorePreviewEditScroll(scrollState: { top: number; left: number } | n
 
 function performSave(exitAfterSave = false) {
     if (isSaving || !isEditMode) return;
-    if (isPreviewEditMode && hasUnsafePreviewEditSource(originalContent)) {
-        showToast('此文档包含围栏代码或 Tab 排版，预览编辑无法保真保存。请改用分栏编辑或编辑文件。');
-        return;
+    let previewMarkdown: string | null = null;
+    if (isPreviewEditMode) {
+        const preview = $('markdownPreview');
+        if (!preview || previewEditBaselineHtml === null || previewEditBaselineMarkdown === null) {
+            showToast('预览编辑状态尚未就绪，请改用分栏编辑。');
+            return;
+        }
+        const html = getPreviewEditHtml(preview);
+        if (html === previewEditBaselineHtml) {
+            previewMarkdown = originalContent;
+        } else {
+            if (hasUnsafePreviewEditSource(originalContent)) {
+                showToast('此文档包含围栏代码或 Tab 排版，预览编辑无法保真保存。请改用分栏编辑。');
+                return;
+            }
+            const trailingNewlines = getPreviewEditTrailingNewlines(originalContent, previewEditBaselineMarkdown);
+            if (trailingNewlines === null || /<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(html)) {
+                showToast('此文档的 Markdown 语法无法在预览编辑中保真保存，请改用分栏编辑。');
+                return;
+            }
+            previewMarkdown = turndownService.turndown(html) + trailingNewlines;
+        }
     }
     isSaving = true;
     shouldExitEditMode = exitAfterSave;
@@ -1366,30 +1427,13 @@ function performSave(exitAfterSave = false) {
 
     if (isPreviewEditMode) {
         rememberPreviewEditScroll();
-
-        // Convert preview HTML back to markdown
-        const preview = $('markdownPreview');
-        if (preview) {
-            const clone = preview.cloneNode(true) as HTMLElement;
-            clone.querySelectorAll('.table-hover-tools').forEach(node => node.remove());
-            clone.querySelectorAll('.heading-anchor').forEach(node => node.remove());
-            clone.querySelectorAll('.code-block-header').forEach(node => node.remove());
-            clone.querySelectorAll('.code-copy').forEach(node => node.remove());
-            clone.querySelectorAll('td, th').forEach((cellNode) => {
-                const cell = cellNode as HTMLTableCellElement;
-                if ((cell.textContent || '').replace(/\u00a0/g, '').trim() === '') {
-                    cell.innerHTML = '';
-                }
-            });
-            currentContent = turndownService.turndown(clone.innerHTML);
-        }
+        currentContent = previewMarkdown as string;
     } else {
         if (editorEl) {
             currentContent = editorEl.value;
         }
     }
 
-    currentContent = sanitizeMarkdownCopyLinkArtifacts(currentContent);
     if (editorEl && editorEl.value !== currentContent) {
         editorEl.value = currentContent;
     }
@@ -2566,7 +2610,16 @@ window.addEventListener('message', (event) => {
 
     switch (m.command) {
         case 'webviewError':
+            if (isSaving) {
+                isSaving = false;
+                shouldExitEditMode = false;
+                setButtonsEnabled(true);
+            }
             showToast(m.message || '请求被拒绝：输入超出安全限制');
+            break;
+
+        case 'externalFileChanged':
+            showToast('文件已被其他程序修改；当前编辑内容已保留，请先处理冲突或重新加载。');
             break;
 
         case 'initMarkdown':
@@ -2616,6 +2669,13 @@ window.addEventListener('message', (event) => {
             if (m.ok) {
                 showToast(I18n.t('toast.saved', 'Saved'));
                 originalContent = currentContent;
+                if (isPreviewEditMode) {
+                    const preview = $('markdownPreview');
+                    previewEditBaselineHtml = preview ? getPreviewEditHtml(preview) : null;
+                    previewEditBaselineMarkdown = previewEditBaselineHtml === null
+                        ? null
+                        : turndownService.turndown(previewEditBaselineHtml);
+                }
                 if (shouldExitEditMode) {
                     if (isPreviewEditMode) {
                         setPreviewEditMode(false);
@@ -2722,8 +2782,7 @@ function buildToolbarButtons() {
             label: I18n.t('toolbar.editFile', 'Edit File'),
             tooltip: I18n.t('toolbar.editFileMdTooltip', 'Edit File in Vscode Default Editor'),
             onClick: () => {
-                isPreviewView = !isPreviewView;
-                vscode.postMessage({ command: 'toggleView', isPreviewView });
+                vscode.postMessage({ command: 'toggleView', isPreviewView: false, hasUnsavedChanges: hasUnsavedMarkdownEdits() });
             }
         },
         {

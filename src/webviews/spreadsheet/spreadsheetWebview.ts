@@ -7735,7 +7735,17 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         if (!message || typeof message !== 'object') return;
 
         if (message.command === 'webviewError') {
+            if (isSaving) {
+                hideLoading();
+                isSaving = false;
+                setButtonsEnabled(true);
+            }
             showToast(message.message || '请求被拒绝：输入超出安全限制', false, 2500);
+            return;
+        }
+
+        if (message.command === 'saveWarning') {
+            showToast(message.message || '文件已保存，但附加处理失败。', false, 5000);
             return;
         }
 

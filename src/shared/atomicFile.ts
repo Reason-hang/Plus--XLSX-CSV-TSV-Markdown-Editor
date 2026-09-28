@@ -6,7 +6,22 @@ export async function writeFileAtomically(
     filePath: string,
     writer: (temporaryPath: string) => Promise<void>
 ): Promise<void> {
-    const targetPath = path.resolve(filePath);
+    const requestedPath = path.resolve(filePath);
+    let targetPath = requestedPath;
+    try {
+        if ((await fs.promises.lstat(requestedPath)).isSymbolicLink()) {
+            targetPath = await fs.promises.realpath(requestedPath);
+        }
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            throw error;
+        }
+        // A dangling symlink must not be replaced with a regular file.
+        const link = await fs.promises.lstat(requestedPath).catch(() => null);
+        if (link?.isSymbolicLink()) {
+            throw new Error('无法保存：文件符号链接的目标不存在。');
+        }
+    }
     const temporaryPath = path.join(
         path.dirname(targetPath),
         `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.${randomBytes(6).toString('hex')}.tmp`
@@ -15,6 +30,9 @@ export async function writeFileAtomically(
     let originalMode: number | undefined;
     try {
         const stat = await fs.promises.stat(targetPath);
+        if (stat.nlink > 1) {
+            throw new Error('无法原子保存具有多个硬链接的文件，请先另存为独立文件。');
+        }
         originalMode = stat.mode & 0o777;
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {

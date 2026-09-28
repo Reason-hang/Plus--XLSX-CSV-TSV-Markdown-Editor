@@ -46,6 +46,7 @@ const MARKDOWN_COMMANDS = new Set([
     'restoreVersion',
     'saveMarkdown',
     'savePdfData',
+    'setLanguage',
     'showVersionHistory',
     'submitFeedback',
     'toggleMdAssociation',
@@ -67,6 +68,7 @@ const SPREADSHEET_COMMANDS = new Set([
     'requestStyleMode',
     'restoreVersion',
     'saveXlsxEdits',
+    'setLanguage',
     'setPreferredViewMode',
     'showVersionHistory',
     'styleModeDecision',
@@ -377,8 +379,15 @@ export function validateWebviewMessage(message: unknown, surface: WebviewSurface
             return validateString(message.documentUri, 'documentUri', WEBVIEW_LIMITS.maxSourceLength);
         }
         case 'restoreVersion':
-            return validateString(message.versionId, 'versionId', WEBVIEW_LIMITS.maxVersionIdLength);
+            return validateString(message.versionId, 'versionId', WEBVIEW_LIMITS.maxVersionIdLength, surface === 'spreadsheet');
+        case 'setLanguage':
+            return message.language === 'auto' || message.language === 'en' || message.language === 'zh'
+                ? pass()
+                : reject('WEBVIEW_FIELD_INVALID', 'language 必须是 auto、en 或 zh。');
         case 'toggleView':
+            if (message.hasUnsavedChanges !== undefined && typeof message.hasUnsavedChanges !== 'boolean') {
+                return reject('WEBVIEW_FIELD_INVALID', 'hasUnsavedChanges 必须是布尔值。');
+            }
             return typeof message.isPreviewView === 'boolean' || typeof message.isTableView === 'boolean'
                 ? pass()
                 : reject('WEBVIEW_FIELD_INVALID', 'toggleView 的视图字段必须是布尔值。');
@@ -386,6 +395,10 @@ export function validateWebviewMessage(message: unknown, surface: WebviewSurface
             return typeof message.enable === 'boolean' ? pass() : reject('WEBVIEW_FIELD_INVALID', 'enable 必须是布尔值。');
         case 'updateSettings': {
             if (!isRecord(message.settings)) {return reject('WEBVIEW_FIELD_INVALID', 'settings 必须是对象。');}
+            if (surface === 'markdown' && message.settings.previewPosition !== undefined &&
+                message.settings.previewPosition !== 'left' && message.settings.previewPosition !== 'right') {
+                return reject('WEBVIEW_FIELD_INVALID', 'previewPosition 必须是 left 或 right。');
+            }
             const settingsBytes = byteLength(JSON.stringify(message.settings));
             return settingsBytes <= WEBVIEW_LIMITS.maxSettingsBytes
                 ? pass()

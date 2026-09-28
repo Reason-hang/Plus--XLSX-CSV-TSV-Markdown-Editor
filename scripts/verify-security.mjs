@@ -16,7 +16,7 @@ const { isAllowedExternalUri } = require(path.join(projectRoot, 'out/shared/exte
 const { isPathWithin } = require(path.join(projectRoot, 'out/shared/pathSafety.js'));
 const { isPathWithinRealpath } = require(path.join(projectRoot, 'out/shared/pathSafety.js'));
 const { validateWebviewMessage, WEBVIEW_LIMITS } = require(path.join(projectRoot, 'out/shared/webviewMessageSchema.js'));
-const { hasUnsafePreviewEditSource } = require(path.join(projectRoot, 'out/webviews/md/previewEditSafety.js'));
+const { hasUnsafePreviewEditSource, getPreviewEditTrailingNewlines } = require(path.join(projectRoot, 'out/webviews/md/previewEditSafety.js'));
 const { resolveHeadingId } = require(path.join(projectRoot, 'out/webviews/md/anchorNavigation.js'));
 
 assert.equal(hasUnsafePreviewEditSource('普通段落\n\n**重点**'), false);
@@ -24,6 +24,8 @@ assert.equal(hasUnsafePreviewEditSource('```mermaid\ngraph TD\nA-->B\n```'), tru
 assert.equal(hasUnsafePreviewEditSource('~~~text\ncontent\n~~~'), true);
 assert.equal(hasUnsafePreviewEditSource('  - item\n    ```json\n    {}\n    ```'), true);
 assert.equal(hasUnsafePreviewEditSource('列一\t列二'), true);
+assert.equal(getPreviewEditTrailingNewlines('## 标题\n', '## 标题'), '\n');
+assert.equal(getPreviewEditTrailingNewlines('==高亮==\n', '高亮'), null);
 const headings = [
     { id: '前言：从态度到格局（写给读者）', text: '前言：从态度到格局（写给读者）' },
     { id: '全书本质总结与产品经理启发', text: '全书本质总结与产品经理启发' }
@@ -178,7 +180,7 @@ assert.match(mdProviderSource, /katexStyleUri/);
 assert.doesNotMatch(mdProviderSource, /cdnjs\.cloudflare\.com\/ajax\/libs\/KaTeX/);
 assert.match(spreadsheetProviderSource, /message\?\.command === 'restoreVersion'[\s\S]*?await assertFileUnchanged\(\)/);
 assert.doesNotMatch(conversionSource, /csvSeparatorOverride/);
-assert.match(conversionSource, /replace\(\/\^\\uFEFF\//);
+assert.match(conversionSource, /new TextDecoder\('utf-8', \{ fatal: true/);
 assert.match(conversionSource, /writeFileAtomically/);
 assert.ok(themeSource.includes('url\\s*\\([^)]*\\bvar\\s*\\('), 'theme CSS must reject url(var(...))');
 assert.match(mdWebviewSource, /script, style, iframe/);

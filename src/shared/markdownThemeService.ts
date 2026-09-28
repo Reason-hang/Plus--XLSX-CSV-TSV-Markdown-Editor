@@ -26,6 +26,8 @@ function createHash(content: string): string {
 }
 
 function validateThemeCss(css: string): void {
+    // UX lint only: CSS has escaping and image-set forms that a regex cannot fully parse.
+    // Untrusted workspace settings cannot select theme files; CSP controls remote loads.
     if (!css.trim()) {
         throw new Error('主题 CSS 文件为空。');
     }
@@ -46,6 +48,7 @@ function validateThemeCss(css: string): void {
 export class MarkdownThemeService implements vscode.Disposable {
     private readonly onDidChangeEmitter = new vscode.EventEmitter<MarkdownThemePayload>();
     private readonly watchers: vscode.Disposable[] = [];
+    private watchedFiles: string[] = [];
     private reloadTimer: NodeJS.Timeout | undefined;
     private lastSuccessfulTheme: SuccessfulTheme | undefined;
     private payload: MarkdownThemePayload = {
@@ -184,8 +187,14 @@ export class MarkdownThemeService implements vscode.Disposable {
     }
 
     private resetWatchers(files: string[]): void {
+        const nextFiles = [...new Set(files.filter(file => file && path.isAbsolute(file)))].sort();
+        if (nextFiles.length === this.watchedFiles.length &&
+            nextFiles.every((file, index) => file === this.watchedFiles[index])) {
+            return;
+        }
         this.clearWatchers();
-        for (const file of new Set(files.filter(file => file && path.isAbsolute(file)))) {
+        this.watchedFiles = nextFiles;
+        for (const file of nextFiles) {
             const watcher = vscode.workspace.createFileSystemWatcher(
                 new vscode.RelativePattern(vscode.Uri.file(path.dirname(file)), path.basename(file))
             );
@@ -200,6 +209,7 @@ export class MarkdownThemeService implements vscode.Disposable {
     }
 
     private clearWatchers(): void {
+        this.watchedFiles = [];
         for (const watcher of this.watchers.splice(0)) {
             watcher.dispose();
         }

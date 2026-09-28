@@ -1,6 +1,8 @@
 # XLSX, CSV, TSV & Markdown Editor - VS Code Extension
 
-> 本 Fork 的当前开发版本为 `2.0.1-local.1`，以原作者 `v2.0.1` 提交 `4d0c836d128586f1d717544f02354408b0b931a2` 为基线，迁入 `1.9.98-local.10` 的自研能力。功能取舍与验证边界见 [迁移决策与验收](docs/07-版本与发布/v2.0.1-local.1-迁移决策与验收.md)；[旧增强版说明](README-LOCAL-PATCH.md)保留为历史资料。涉及围栏代码或 Tab 排版的文件暂不能用 Preview Edit 保存，请使用 Split Edit 或原生编辑器。
+> 本 Fork 的当前开发版本为 `2.0.1-local.2`，以原作者 `v2.0.1` 提交 `4d0c836d128586f1d717544f02354408b0b931a2` 为基线；`.1` 的迁移取舍见 [迁移决策与验收](docs/07-版本与发布/v2.0.1-local.1-迁移决策与验收.md)。[旧增强版说明](README-LOCAL-PATCH.md)保留为历史资料。
+
+本地版本的保存边界：复杂 Markdown 在 Preview Edit 修改后若无法证明往返保真，会拒绝保存，请使用 Split Edit；非 UTF-8 的 CSV／TSV 和包含图表、透视表等不受 ExcelJS 保真支持的 XLSX，也会拒绝覆盖。CSV／TSV 的单元格样式仅存在 IDE 本地状态，48 小时后会被清理，需长期保存样式请转换为 XLSX。Markdown 远程 HTTPS 图片默认不加载；确需显示时在本机设置 `xlsxViewer.md.allowRemoteImages=true`，重新打开预览。工具栏反馈表单会提交至原作者的 Google 表单。
 
 后续上游升级：固定目标 tag 与旧版提交／VSIX，逐项复审功能台账；对上游已覆盖的能力退役本地补丁，对仍需保留的能力重放精选补丁并按功能验收。每轮在独立 worktree 完成构建、行为用例和目标 IDE 验收，再更新发布分支；旧版 tag／VSIX 保留用于回装。发生上游重构时重新判断实现，不能仅凭 Git 无冲突判定功能可用。
 

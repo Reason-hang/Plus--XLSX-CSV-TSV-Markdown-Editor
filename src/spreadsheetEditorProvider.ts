@@ -4,7 +4,7 @@ import * as Excel from 'exceljs';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createHash } from 'crypto';
-import { VERSION_HISTORY_RETENTION_MS, buildGroupedVersionHistoryItems as buildSharedVersionHistoryItems, formatVersionHistoryTimestamp, getVersionHistoryDir } from './shared/versionHistory';
+import { VERSION_HISTORY_RETENTION_MS, buildGroupedVersionHistoryItems as buildSharedVersionHistoryItems, formatVersionHistoryTimestamp, getVersionHistoryDir, isSafeSnapshotFile } from './shared/versionHistory';
 import { convertARGBToRGBA, isShadeOfBlack, isShadeOfWhite, loadExcelWorkbook } from './spreadsheet/spreadsheetUtilities';
 import { convertTabularFile, readTabularFile, detectTabularFileType, writeTabularFile, TabularFileType } from './shared/fileConversionService';
 import { StyleStorageService } from './shared/styleStorageService';
@@ -13,6 +13,8 @@ import { getCellValueForDisplay } from './spreadsheet/cellValue';
 import { writeBufferFileAtomically, writeFileAtomically } from './shared/atomicFile';
 import { hashBuffer, hashFile } from './shared/fileFingerprint';
 import { validateWebviewMessage } from './shared/webviewMessageSchema';
+import { buildInlineListFormula } from './shared/inlineListFormula';
+import { assertXlsxRoundTripSupported } from './shared/xlsxRoundTripSafety';
 
 function borderEditToCssValue(enabled: boolean, style?: string, color?: string): string {
     if (!enabled) return '';
@@ -253,6 +255,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
         let shouldOpenDelimitedInStyledMode = false;
         let currentIsPlainView = false;
         let isSaving = false;
+        let requiresReopenAfterSave = false;
         let lastSaveTime = 0;
         let lastKnownFileHash = '';
 
@@ -285,7 +288,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
         };
 
         const getHistoryIndexPath = () => path.join(getHistoryDir(), 'index.json');
-        const getSnapshotPath = (snapshotFile: string) => path.join(getHistoryDir(), snapshotFile);
+        const getSnapshotPath = (snapshotFile: string) => {
+            if (!isSafeSnapshotFile(snapshotFile, ['xlsx', 'csv', 'tsv'])) {
+                throw new Error('Invalid version snapshot path');
+            }
+            return path.join(getHistoryDir(), snapshotFile);
+        };
         const getSnapshotFileType = (snapshotFile: string, fallbackType: TabularFileType): TabularFileType => {
             const extension = path.extname(snapshotFile).toLowerCase().replace(/^\./, '');
             if (extension === 'csv' || extension === 'tsv' || extension === 'xlsx') {
@@ -1030,20 +1038,30 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             }, sourceType);
             lastKnownFileHash = await hashFile(filePath);
             lastSaveTime = Date.now();
+            const saveWarnings: string[] = [];
 
-            await this.styleStorage.saveMetadata(document.uri, {
-                cells: finalCells,
-                merges
-            });
+            try {
+                await this.styleStorage.saveMetadata(document.uri, { cells: finalCells, merges });
+            } catch (error) {
+                saveWarnings.push(`表格文件已保存，但样式状态未写入：${String(error)}`);
+            }
 
             // Keep provider-side worksheet cache in sync so plain/styled mode toggles
             // re-render with the latest persisted style metadata.
             if (requiresWorkbookRefresh) {
-                await loadWorkbookPayload();
+                try {
+                    await loadWorkbookPayload();
+                } catch (error) {
+                    requiresReopenAfterSave = true;
+                    saveWarnings.push(`文件已保存，但界面刷新失败。请重新打开文件后继续编辑：${String(error)}`);
+                }
             }
 
             try {
                 webview.postMessage({ command: 'saveResult', ok: true, isAutosave });
+                for (const message of saveWarnings) {
+                    webview.postMessage({ command: 'saveWarning', message });
+                }
             } catch {
                 // ignore
             }
@@ -1117,7 +1135,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 if (!Array.isArray(parsed)) {
                     return [];
                 }
-                return parsed as VersionHistoryEntry[];
+                return parsed.filter((entry: VersionHistoryEntry) =>
+                    entry && isSafeSnapshotFile(entry.snapshotFile, ['xlsx', 'csv', 'tsv'])) as VersionHistoryEntry[];
             } catch {
                 return [];
             }
@@ -1431,11 +1450,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                                         formulae: ['"TRUE,FALSE"']
                                     } as any;
                                 } else if (controlType === 'dropdown' && dropdownOptions) {
-                                    const inline = dropdownOptions.join(',');
                                     cell.dataValidation = {
                                         type: 'list',
                                         allowBlank: true,
-                                        formulae: [`"${inline}"`]
+                                        formulae: [buildInlineListFormula(dropdownOptions)]
                                     } as any;
                                 } else if (controlType === 'rating') {
                                     cell.dataValidation = {
@@ -1536,10 +1554,17 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             }
             if (message?.command === 'webviewReady') {
                 isWebviewReady = true;
-                await pruneHistory();
-                await persistVersionSnapshot();
                 trySendSettings();
                 trySendInit();
+                try {
+                    await persistVersionSnapshot();
+                } catch (historyError) {
+                    console.error('Failed to initialize spreadsheet version history:', historyError);
+                    webview.postMessage({
+                        command: 'versionHistoryError',
+                        message: '表格已打开，但版本历史暂时不可用。'
+                    });
+                }
                 // Send current theme info to webview
                 try {
                     webview.postMessage({ type: 'setTheme', kind: vscode.window.activeColorTheme.kind });
@@ -1809,6 +1834,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                             method: 'POST',
                             headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) }
                         }, (res: any) => resolve((res.statusCode ?? 500) < 400));
+                        req.setTimeout(10000, () => req.destroy(new Error('Feedback request timed out')));
                         req.on('error', () => resolve(false));
                         req.write(body);
                         req.end();
@@ -1906,6 +1932,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             if (message?.command === 'saveXlsxEdits') {
                 try {
                     isSaving = true;
+                    if (requiresReopenAfterSave) {
+                        throw new Error('上次保存后的界面刷新失败，请重新打开文件后再编辑。');
+                    }
                     if (previewVersionId) {
                         webview.postMessage({ command: 'saveResult', ok: false, error: 'Preview mode is read-only' });
                         return;
@@ -1930,6 +1959,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     }
 
                     await assertFileUnchanged();
+                    await assertXlsxRoundTripSupported(document.uri.fsPath);
                     const workbook = new Excel.Workbook();
                     await loadExcelWorkbook(document.uri.fsPath, workbook);
                     const ws = workbook.worksheets[sheetIndex];
@@ -2082,11 +2112,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                                     if (!options.length) break;
 
                                     const first = options[0];
-                                    const inline = options.join(',');
                                     cell.dataValidation = {
                                         type: 'list',
                                         allowBlank: true,
-                                        formulae: [`"${inline}"`]
+                                        formulae: [buildInlineListFormula(options)]
                                     } as any;
                                     cell.value = defaultValue && options.includes(defaultValue) ? defaultValue : first;
                                     break;
@@ -2393,7 +2422,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     await writeFileAtomically(document.uri.fsPath, temporaryPath => workbook.xlsx.writeFile(temporaryPath));
                     lastKnownFileHash = await hashFile(filePath);
                     lastSaveTime = Date.now();
-                    await persistVersionSnapshot();
+                    const saveWarnings: string[] = [];
+                    try {
+                        await persistVersionSnapshot();
+                    } catch (error) {
+                        saveWarnings.push(`文件已保存，但历史快照失败：${String(error)}`);
+                    }
                     previewVersionId = null;
                     previewVersionTimestamp = null;
 
@@ -2404,15 +2438,28 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                         });
 
                         // Keep insert-control autosave smooth by avoiding a full webview re-init.
-                        await loadWorkbookPayload();
-                        if (requiresFullRefresh) {
-                            trySendInit();
+                        try {
+                            await loadWorkbookPayload();
+                            if (requiresFullRefresh) {
+                                trySendInit();
+                            }
+                        } catch (error) {
+                            requiresReopenAfterSave = true;
+                            saveWarnings.push(`文件已保存，但界面刷新失败。请重新打开文件后继续编辑：${String(error)}`);
                         }
                     } else {
                         // For pure text/style edits, update worksheetsData internally but don't force a full webview re-render
-                        await loadWorkbookPayload();
+                        try {
+                            await loadWorkbookPayload();
+                        } catch (error) {
+                            requiresReopenAfterSave = true;
+                            saveWarnings.push(`文件已保存，但界面刷新失败。请重新打开文件后继续编辑：${String(error)}`);
+                        }
                     }
                     try { webview.postMessage({ command: 'saveResult', ok: true, isAutosave }); } catch { }
+                    for (const message of saveWarnings) {
+                        try { webview.postMessage({ command: 'saveWarning', message }); } catch { }
+                    }
                 } catch (err) {
                     const error = err instanceof Error ? err.message : String(err);
                     const errorCode = err && typeof err === 'object' && 'code' in err
@@ -2454,10 +2501,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 return;
             }
             try {
-                await loadWorkbookPayload();
-                trySendInit();
+                if (await hashFile(filePath) !== lastKnownFileHash) {
+                    webview.postMessage({ command: 'externalFileChanged' });
+                }
             } catch {
-                // ignore reload errors
+                // The save path will independently verify the file fingerprint.
             }
         });
         webviewPanel.onDidDispose(() => {

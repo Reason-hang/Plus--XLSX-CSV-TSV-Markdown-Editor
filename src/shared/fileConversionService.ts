@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as Excel from 'exceljs';
 import * as vscode from 'vscode';
+import { TextDecoder } from 'util';
 import { loadExcelWorkbook } from '../spreadsheet/spreadsheetUtilities';
 import { writeFileAtomically } from './atomicFile';
 
@@ -82,20 +83,25 @@ function normalizeWorkbook(workbook: TabularWorkbookData): TabularWorkbookData {
     };
 }
 
-function parseDelimitedText(content: string, delimiter: string): string[][] {
+function parseDelimitedText(content: string, delimiter: string, quotedCells?: boolean[][]): string[][] {
     const rows: string[][] = [];
     let row: string[] = [];
+    let rowQuotes: boolean[] = [];
     let field = '';
     let inQuotes = false;
+    let fieldQuoted = false;
 
     for (let i = 0; i < content.length; i++) {
         const ch = content[i];
 
-        if (ch === '"') {
+        if (ch === '"' && (inQuotes || field.length === 0)) {
             if (inQuotes && i + 1 < content.length && content[i + 1] === '"') {
                 field += '"';
                 i++;
             } else {
+                if (!inQuotes) {
+                    fieldQuoted = true;
+                }
                 inQuotes = !inQuotes;
             }
             continue;
@@ -103,15 +109,21 @@ function parseDelimitedText(content: string, delimiter: string): string[][] {
 
         if (!inQuotes && ch === delimiter) {
             row.push(field);
+            rowQuotes.push(fieldQuoted);
             field = '';
+            fieldQuoted = false;
             continue;
         }
 
         if (!inQuotes && ch === '\n') {
             row.push(field);
+            rowQuotes.push(fieldQuoted);
             rows.push(row);
+            quotedCells?.push(rowQuotes);
             row = [];
+            rowQuotes = [];
             field = '';
+            fieldQuoted = false;
             continue;
         }
 
@@ -120,33 +132,39 @@ function parseDelimitedText(content: string, delimiter: string): string[][] {
                 i++;
             }
             row.push(field);
+            rowQuotes.push(fieldQuoted);
             rows.push(row);
+            quotedCells?.push(rowQuotes);
             row = [];
+            rowQuotes = [];
             field = '';
+            fieldQuoted = false;
             continue;
         }
 
         field += ch;
     }
 
-    if (field.length > 0 || row.length > 0) {
+    if (field.length > 0 || row.length > 0 || fieldQuoted) {
         row.push(field);
+        rowQuotes.push(fieldQuoted);
         rows.push(row);
+        quotedCells?.push(rowQuotes);
     }
 
     return rows;
 }
 
-function serializeDelimitedRows(rows: string[][], delimiter: string): string {
+function serializeDelimitedRows(rows: string[][], delimiter: string, newline = '\n', finalNewline = true, quotedCells?: boolean[][]): string {
     if (!rows.length) {
         return '';
     }
 
-    const escapedRows = rows.map(row => {
+    const escapedRows = rows.map((row, rowIndex) => {
         const safeRow = Array.isArray(row) ? row : [];
-        return safeRow.map(cell => {
+        return safeRow.map((cell, cellIndex) => {
             const value = cell === null || cell === undefined ? '' : String(cell);
-            const shouldQuote = value.includes(delimiter) || value.includes('"') || value.includes('\n') || value.includes('\r');
+            const shouldQuote = quotedCells?.[rowIndex]?.[cellIndex] || value.includes(delimiter) || value.includes('"') || value.includes('\n') || value.includes('\r');
             if (!shouldQuote) {
                 return value;
             }
@@ -154,7 +172,25 @@ function serializeDelimitedRows(rows: string[][], delimiter: string): string {
         }).join(delimiter);
     });
 
-    return escapedRows.join('\n') + '\n';
+    return escapedRows.join(newline) + (finalNewline ? newline : '');
+}
+
+function decodeDelimitedFile(bytes: Buffer): { content: string; bom: boolean; newline: string; finalNewline: boolean } {
+    let decoded: string;
+    try {
+        decoded = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+    } catch {
+        throw new Error('CSV/TSV 文件不是有效的 UTF-8；已拒绝编辑保存，请先在外部工具中确认编码。');
+    }
+    const bom = decoded.startsWith('\uFEFF');
+    const content = bom ? decoded.slice(1) : decoded;
+    const newline = content.includes('\r\n') ? '\r\n' : content.includes('\r') ? '\r' : '\n';
+    return { content, bom, newline, finalNewline: /(?:\r\n|\r|\n)$/.test(content) };
+}
+
+function rowsEqual(left: string[][], right: string[][]): boolean {
+    return left.length === right.length && left.every((row, index) =>
+        row.length === right[index].length && row.every((cell, cellIndex) => cell === right[index][cellIndex]));
 }
 
 function getExcelCellValueAsString(cell: Excel.Cell): string {
@@ -226,7 +262,7 @@ function createDelimitedConverter(type: string, label: string, defaultDelimiter:
         label,
         extension: type,
         async read(filePath: string): Promise<TabularWorkbookData> {
-            const content = (await fs.promises.readFile(filePath, 'utf8')).replace(/^\uFEFF/, '');
+            const { content } = decodeDelimitedFile(await fs.promises.readFile(filePath));
             let delimiter = defaultDelimiter;
             if (type === 'csv') {
                 delimiter = getCsvDelimiter();
@@ -245,7 +281,26 @@ function createDelimitedConverter(type: string, label: string, defaultDelimiter:
             if (type === 'csv') {
                 delimiter = getCsvDelimiter();
             }
-            const content = serializeDelimitedRows(rows, delimiter);
+            let format = { bom: false, newline: '\n', finalNewline: true };
+            let quotedCells: boolean[][] | undefined;
+            try {
+                const original = decodeDelimitedFile(await fs.promises.readFile(filePath));
+                quotedCells = [];
+                const originalRows = parseDelimitedText(original.content, delimiter, quotedCells);
+                if (rowsEqual(originalRows, rows)) {
+                    return; // Style-only or no-op save must not rewrite user bytes.
+                }
+                if (serializeDelimitedRows(originalRows, delimiter, original.newline, original.finalNewline, quotedCells) !== original.content) {
+                    throw new Error('CSV/TSV 原文包含无法保真重写的引号或换行格式，已拒绝覆盖；请先另存为规范 UTF-8 文件。');
+                }
+                format = original;
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+                    throw error;
+                }
+            }
+            const content = (format.bom ? '\uFEFF' : '') +
+                serializeDelimitedRows(rows, delimiter, format.newline, format.finalNewline, quotedCells);
             await writeFileAtomically(filePath, temporaryPath => fs.promises.writeFile(temporaryPath, content, 'utf8'));
         }
     };
