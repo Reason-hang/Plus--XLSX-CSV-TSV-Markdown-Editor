@@ -3,17 +3,9 @@ import * as path from 'path';
 import * as Excel from 'exceljs';
 import * as vscode from 'vscode';
 import { loadExcelWorkbook } from '../spreadsheet/spreadsheetUtilities';
-
-let csvSeparatorOverride: string | undefined = undefined;
-
-export function setCsvSeparatorOverride(separator: string | undefined): void {
-    csvSeparatorOverride = separator;
-}
+import { writeFileAtomically } from './atomicFile';
 
 function getCsvDelimiter(): string {
-    if (csvSeparatorOverride) {
-        return csvSeparatorOverride;
-    }
     try {
         const config = vscode.workspace.getConfiguration('xlsxViewer');
         return config.get<string>('csv.separator', ',');
@@ -234,7 +226,7 @@ function createDelimitedConverter(type: string, label: string, defaultDelimiter:
         label,
         extension: type,
         async read(filePath: string): Promise<TabularWorkbookData> {
-            const content = await fs.promises.readFile(filePath, 'utf8');
+            const content = (await fs.promises.readFile(filePath, 'utf8')).replace(/^\uFEFF/, '');
             let delimiter = defaultDelimiter;
             if (type === 'csv') {
                 delimiter = getCsvDelimiter();
@@ -254,7 +246,7 @@ function createDelimitedConverter(type: string, label: string, defaultDelimiter:
                 delimiter = getCsvDelimiter();
             }
             const content = serializeDelimitedRows(rows, delimiter);
-            await fs.promises.writeFile(filePath, content, 'utf8');
+            await writeFileAtomically(filePath, temporaryPath => fs.promises.writeFile(temporaryPath, content, 'utf8'));
         }
     };
 }
@@ -271,13 +263,26 @@ function createXlsxConverter(): TabularFileConverter {
             const sheets = workbook.worksheets.map((worksheet, index) => {
                 let maxRow = 0;
                 let maxCol = 0;
+                let populatedCellCount = 0;
 
                 worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
                     maxRow = Math.max(maxRow, rowNumber);
-                    row.eachCell({ includeEmpty: false }, (_cell, colNumber) => {
+                    row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
                         maxCol = Math.max(maxCol, colNumber);
+                        if (cell.value !== null && cell.value !== undefined) {
+                            populatedCellCount++;
+                        }
                     });
                 });
+
+                const rangeSize = maxRow * maxCol;
+                const isTooLarge = maxRow > 100_000 || maxCol > 10_000 || rangeSize > 5_000_000;
+                const isTooSparse = rangeSize > 500_000 && populatedCellCount * 20 < rangeSize;
+                if (isTooLarge || isTooSparse) {
+                    throw new Error(
+                        `工作表“${worksheet.name}”的有效范围过大或过于稀疏（${maxRow} 行 × ${maxCol} 列），已停止读取以避免占满内存。`
+                    );
+                }
 
                 const rows: string[][] = [];
                 for (let rowNumber = 1; rowNumber <= maxRow; rowNumber++) {
@@ -314,7 +319,7 @@ function createXlsxConverter(): TabularFileConverter {
                 }
             }
 
-            await workbook.xlsx.writeFile(filePath);
+            await writeFileAtomically(filePath, temporaryPath => workbook.xlsx.writeFile(temporaryPath));
         }
     };
 }

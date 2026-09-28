@@ -3,7 +3,9 @@ import { createHash } from 'crypto';
 import * as vscode from 'vscode';
 
 export const VERSION_HISTORY_RETENTION_MS = 48 * 60 * 60 * 1000;
-export const VERSION_HISTORY_SNAPSHOT_DEBOUNCE_MS = 1000;
+export const VERSION_HISTORY_SNAPSHOT_DEBOUNCE_MS = 30_000;
+export const VERSION_HISTORY_MAX_ENTRIES = 200;
+export const VERSION_HISTORY_MAX_TOTAL_BYTES = 50 * 1024 * 1024;
 
 function getHistoryKey(filePath: string): string {
     return createHash('sha1').update(filePath).digest('hex');
@@ -33,9 +35,15 @@ export function formatVersionHistoryGroupLabel(timestamp: number): string {
     const entryDay = new Date(entryDate.getFullYear(), entryDate.getMonth(), entryDate.getDate());
     const dayDiff = Math.round((today.getTime() - entryDay.getTime()) / (24 * 60 * 60 * 1000));
 
-    if (dayDiff === 0) return 'Today';
-    if (dayDiff === 1) return 'Yesterday';
-    if (dayDiff >= 2 && dayDiff <= 6) return 'This Week';
+    if (dayDiff === 0) {
+        return 'Today';
+    }
+    if (dayDiff === 1) {
+        return 'Yesterday';
+    }
+    if (dayDiff >= 2 && dayDiff <= 6) {
+        return 'This Week';
+    }
     return entryDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 

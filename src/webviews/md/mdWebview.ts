@@ -19,9 +19,6 @@ import mark from 'markdown-it-mark';
 import abbr from 'markdown-it-abbr';
 // @ts-ignore
 import { full as emoji } from 'markdown-it-emoji';
-// @ts-ignore
-import katex from 'markdown-it-katex';
-
 import hljs from 'highlight.js';
 import { ThemeManager } from '../shared/themeManager';
 import { SettingsManager, SettingDefinition } from '../shared/settingsManager';
@@ -35,11 +32,14 @@ import { FeedbackModal } from '../shared/feedbackModal';
 import { ProjectsModal } from '../shared/projectsModal';
 import { InfoTooltip } from '../shared/infoTooltip';
 import { I18n } from '../shared/i18n';
+import markdownItKatex from './markdownItKatex';
 import TurndownService from 'turndown';
 // @ts-ignore
 import { gfm } from 'turndown-plugin-gfm';
 // @ts-ignore
 import mermaid from 'mermaid';
+import { hasUnsafePreviewEditSource } from './previewEditSafety';
+import { resolveHeadingId } from './anchorNavigation';
 
 I18n.setVsCodeApi(vscode);
 I18n.init();
@@ -61,6 +61,7 @@ function markdownItMermaid(md: any) {
         }
         mermaid.initialize({
             theme: theme,
+            securityLevel: 'strict',
             gantt: {
                 axisFormatter: [
                     [
@@ -199,7 +200,20 @@ turndownService.addRule('katexBlock', {
 import { detectIsRTL } from '../shared/rtlUtils';
 
 // Settings
-let currentSettings = {
+let currentSettings: {
+    stickyToolbar: boolean;
+    wordWrap: boolean;
+    syncScroll: boolean;
+    previewPosition: string;
+    showOutline: boolean;
+    showLineNumbers: boolean;
+    moveMdButtonsToEnd: boolean;
+    showPopups: boolean;
+    isMdEnabled: boolean;
+    textDirection: 'auto' | 'ltr' | 'rtl';
+    appearance?: MarkdownAppearanceSettings;
+    theme?: MarkdownThemePayload;
+} = {
     stickyToolbar: true,
     wordWrap: true,
     syncScroll: true,
@@ -211,6 +225,73 @@ let currentSettings = {
     isMdEnabled: true,
     textDirection: 'auto' as 'auto' | 'ltr' | 'rtl'
 };
+
+type MarkdownAppearanceSettings = {
+    markBackgroundColor?: string;
+    markTextColor?: string;
+    markFontWeight?: string;
+    markPadding?: string;
+    markBorderRadius?: string;
+    headingColor?: string;
+    previewBackgroundColor?: string;
+    previewTextColor?: string;
+    previewFontSize?: string;
+    previewLineHeight?: string;
+    editorFontSize?: string;
+    editorLineHeight?: string;
+};
+
+type MarkdownThemePayload = {
+    css?: string;
+    status?: 'disabled' | 'loaded' | 'fallback' | 'error';
+    sourcePath?: string;
+    sha256?: string;
+    message?: string;
+};
+
+function cssValueOrFallback(value: unknown, fallback: string): string {
+    return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+function setOptionalCssValue(style: CSSStyleDeclaration, property: string, value: unknown): void {
+    if (typeof value === 'string' && value.trim()) {
+        style.setProperty(property, value.trim());
+    } else {
+        style.removeProperty(property);
+    }
+}
+
+function applyMarkdownAppearance(appearance?: MarkdownAppearanceSettings): void {
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty('--xlsx-viewer-md-mark-background', cssValueOrFallback(appearance?.markBackgroundColor, '#FF4E00'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-color', cssValueOrFallback(appearance?.markTextColor, 'inherit'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-font-weight', cssValueOrFallback(appearance?.markFontWeight, 'inherit'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-padding', cssValueOrFallback(appearance?.markPadding, '0 2px'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-border-radius', cssValueOrFallback(appearance?.markBorderRadius, '2px'));
+    rootStyle.setProperty('--xlsx-viewer-md-heading-color', cssValueOrFallback(appearance?.headingColor, '#569CD6'));
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-background', appearance?.previewBackgroundColor);
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-color', appearance?.previewTextColor);
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-font-size', appearance?.previewFontSize);
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-line-height', appearance?.previewLineHeight);
+    rootStyle.setProperty('--xlsx-viewer-md-editor-font-size', cssValueOrFallback(appearance?.editorFontSize, '16px'));
+    rootStyle.setProperty('--xlsx-viewer-md-editor-line-height', cssValueOrFallback(appearance?.editorLineHeight, '1.8'));
+}
+
+function applyExternalMarkdownTheme(theme?: MarkdownThemePayload): void {
+    const styleId = 'xlsx-viewer-external-markdown-theme';
+    const css = typeof theme?.css === 'string' ? theme.css : '';
+    const existing = document.getElementById(styleId) as HTMLStyleElement | null;
+    if (!css) {
+        existing?.remove();
+        return;
+    }
+    const style = existing || document.createElement('style');
+    style.id = styleId;
+    style.textContent = css;
+    if (!existing) {
+        document.head.appendChild(style);
+    }
+}
 
 let isFocusMode = false;
 let searchMatches: Element[] = [];
@@ -459,7 +540,7 @@ md.use(container as any, 'success');
 
 md.use(deflist);
 md.use(footnote);
-md.use(katex);
+md.use(markdownItKatex);
 md.use(sub);
 md.use(sup);
 md.use(ins);
@@ -737,7 +818,7 @@ md.renderer.rules.fence = function (tokens: any, idx: number, options: any, env:
     const encoded = encodeURIComponent(code);
     const copyLabel = I18n.t('table.copy', 'Copy');
     const copyButton = `<button class="code-copy" data-code="${escapeHtmlAttr(encoded)}" title="${copyLabel}">${Icons.Copy}<span>${copyLabel}</span></button>`;
-    const langClass = langName ? ` class="language-${langName}"` : '';
+    const langClass = langName ? ` class="language-${escapeHtmlAttr(langName)}"` : '';
 
     // Wrap each line for line numbers
     const numberedCode = wrapCodeLines(highlighted);
@@ -868,7 +949,8 @@ function renderMermaidFlowcharts() {
 
     mermaidLib.initialize({
         startOnLoad: false,
-        theme: isDark ? 'dark' : 'default'
+        theme: isDark ? 'dark' : 'default',
+        securityLevel: 'strict'
     });
 
     const nodes = document.querySelectorAll('.mermaid');
@@ -882,6 +964,54 @@ function renderMermaidFlowcharts() {
 }
 
 let isRenderingMarkdown = false;
+function isSafeRenderedUrl(value: string, attributeName: string): boolean {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) {
+        return !trimmed.startsWith('//');
+    }
+
+    try {
+        const protocol = new URL(trimmed, 'https://xlsx-viewer.invalid/').protocol.toLowerCase();
+        if (attributeName === 'src') {
+            return protocol === 'http:' || protocol === 'https:' ||
+                (protocol === 'data:' && /^data:image\/(?:png|gif|jpe?g|webp|bmp|avif)(?:;|,)/i.test(trimmed));
+        }
+        return protocol === 'http:' || protocol === 'https:' || protocol === 'mailto:';
+    } catch {
+        return false;
+    }
+}
+
+function sanitizeRenderedMarkdownHtml(html: string): string {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+
+    template.content.querySelectorAll(
+        'script, style, iframe, object, embed, base, meta, link, portal, form, foreignObject'
+    ).forEach(element => element.remove());
+
+    template.content.querySelectorAll<HTMLElement>('*').forEach(element => {
+        Array.from(element.attributes).forEach(attribute => {
+            const name = attribute.name.toLowerCase();
+            if (name.startsWith('on') || name === 'srcdoc' || name === 'srcset') {
+                element.removeAttribute(attribute.name);
+                return;
+            }
+
+            if (name === 'style' && /url\s*\(|@import|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:/i.test(attribute.value)) {
+                element.removeAttribute(attribute.name);
+                return;
+            }
+
+            const urlAttributes = new Set(['href', 'src', 'xlink:href', 'formaction', 'action', 'poster', 'cite', 'background']);
+            if (urlAttributes.has(name) && !isSafeRenderedUrl(attribute.value, name)) {
+                element.removeAttribute(attribute.name);
+            }
+        });
+    });
+
+    return template.innerHTML;
+}
 
 function renderMarkdown(content: string) {
     I18n.detectAndApplyFromContent(content);
@@ -896,7 +1026,7 @@ function renderMarkdown(content: string) {
         const normalizedContent = sanitizeMarkdownCopyLinkArtifacts(content || '');
         const tokens = md.parse(normalizedContent, env);
         addHeadingIds(tokens);
-        preview.innerHTML = md.renderer.render(tokens, md.options, env);
+        preview.innerHTML = sanitizeRenderedMarkdownHtml(md.renderer.render(tokens, md.options, env));
 
         refreshSyncMetrics();
 
@@ -1218,6 +1348,10 @@ function restorePreviewEditScroll(scrollState: { top: number; left: number } | n
 
 function performSave(exitAfterSave = false) {
     if (isSaving || !isEditMode) return;
+    if (isPreviewEditMode && hasUnsafePreviewEditSource(originalContent)) {
+        showToast('此文档包含围栏代码或 Tab 排版，预览编辑无法保真保存。请改用分栏编辑或编辑文件。');
+        return;
+    }
     isSaving = true;
     shouldExitEditMode = exitAfterSave;
     setButtonsEnabled(false);
@@ -1898,6 +2032,8 @@ function updateTextDirection(sampleText?: string) {
 function applySettings(settings: any, persist = false) {
     if (!settings) return;
     currentSettings = { ...currentSettings, ...settings };
+    applyMarkdownAppearance((currentSettings as { appearance?: MarkdownAppearanceSettings }).appearance);
+    applyExternalMarkdownTheme((currentSettings as { theme?: MarkdownThemePayload }).theme);
 
     Utils.showPopupsEnabled = (currentSettings as any).showPopups !== false;
 
@@ -1968,6 +2104,28 @@ function applySettings(settings: any, persist = false) {
     if (chkShowOutline) chkShowOutline.checked = currentSettings.showOutline;
     if (chkShowLineNumbers) chkShowLineNumbers.checked = currentSettings.showLineNumbers;
 
+    const appearance = currentSettings.appearance || {};
+    const appearanceInputs: Array<[string, string | undefined]> = [
+        ['txtMarkBackgroundColor', appearance.markBackgroundColor],
+        ['txtMarkTextColor', appearance.markTextColor],
+        ['txtMarkFontWeight', appearance.markFontWeight],
+        ['txtMarkPadding', appearance.markPadding],
+        ['txtMarkBorderRadius', appearance.markBorderRadius],
+        ['txtHeadingColor', appearance.headingColor],
+        ['txtPreviewBackgroundColor', appearance.previewBackgroundColor],
+        ['txtPreviewTextColor', appearance.previewTextColor],
+        ['txtEditorFontSize', appearance.editorFontSize],
+        ['txtEditorLineHeight', appearance.editorLineHeight],
+        ['txtPreviewFontSize', appearance.previewFontSize],
+        ['txtPreviewLineHeight', appearance.previewLineHeight]
+    ];
+    appearanceInputs.forEach(([id, value]) => {
+        const input = $(id) as HTMLInputElement;
+        if (input && typeof value === 'string') {
+            input.value = value;
+        }
+    });
+
     // Line numbers
     document.body.classList.toggle('show-line-numbers', !!currentSettings.showLineNumbers);
 
@@ -1992,6 +2150,11 @@ function applySettings(settings: any, persist = false) {
 }
 
 function createMdSettingsDefinitions(): SettingDefinition[] {
+    const appearanceValue = (key: keyof MarkdownAppearanceSettings, value: string) => {
+        currentSettings.appearance = { ...(currentSettings.appearance || {}), [key]: value };
+        applySettings(currentSettings, true);
+    };
+
     return [
         {
             id: 'chkWordWrap',
@@ -2118,6 +2281,138 @@ function createMdSettingsDefinitions(): SettingDefinition[] {
                 I18n.setLanguage('zh', true);
             },
             defaultValue: I18n.getLanguageSetting() === 'zh'
+        },
+        {
+            id: 'txtMarkBackgroundColor',
+            label: 'Highlight background',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markBackgroundColor || '#FF4E00',
+            placeholder: '#FF4E00',
+            tooltip: 'Background color for standard <mark> highlights, for example #FF4E00.',
+            onChange: (val: string) => appearanceValue('markBackgroundColor', val)
+        },
+        {
+            id: 'txtMarkTextColor',
+            label: 'Highlight text color',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markTextColor || 'inherit',
+            placeholder: 'inherit',
+            tooltip: 'Text color for <mark> highlights, or inherit to follow the preview text color.',
+            onChange: (val: string) => appearanceValue('markTextColor', val)
+        },
+        {
+            id: 'txtMarkFontWeight',
+            label: 'Highlight weight',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markFontWeight || 'inherit',
+            placeholder: 'inherit',
+            tooltip: 'Font weight for <mark> highlights, for example 700 or inherit.',
+            onChange: (val: string) => appearanceValue('markFontWeight', val)
+        },
+        {
+            id: 'txtMarkPadding',
+            label: 'Highlight padding',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markPadding || '0 2px',
+            placeholder: '0 2px',
+            tooltip: 'Padding around <mark> highlights, for example 0 2px.',
+            onChange: (val: string) => appearanceValue('markPadding', val)
+        },
+        {
+            id: 'txtMarkBorderRadius',
+            label: 'Highlight radius',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markBorderRadius || '2px',
+            placeholder: '2px',
+            tooltip: 'Border radius for <mark> highlights, for example 2px.',
+            onChange: (val: string) => appearanceValue('markBorderRadius', val)
+        },
+        {
+            id: 'txtHeadingColor',
+            label: 'Heading color',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.headingColor || '#569CD6',
+            placeholder: '#569CD6',
+            tooltip: 'Color for all Markdown preview heading levels h1-h6, for example #569CD6.',
+            onChange: (val: string) => appearanceValue('headingColor', val)
+        },
+        {
+            id: 'txtPreviewBackgroundColor',
+            label: 'Preview background',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.previewBackgroundColor || '',
+            placeholder: 'follow IDE theme',
+            tooltip: 'Preview background color. Leave empty to follow the IDE theme.',
+            onChange: (val: string) => appearanceValue('previewBackgroundColor', val)
+        },
+        {
+            id: 'txtPreviewTextColor',
+            label: 'Preview text color',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.previewTextColor || '',
+            placeholder: 'follow IDE theme',
+            tooltip: 'Preview text color. Leave empty to follow the IDE theme.',
+            onChange: (val: string) => appearanceValue('previewTextColor', val)
+        },
+        {
+            id: 'txtEditorFontSize',
+            label: 'Editor font size',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.editorFontSize || '16px',
+            placeholder: '16px',
+            tooltip: 'Font size for the left Markdown editor pane, for example 16px.',
+            onChange: (val: string) => appearanceValue('editorFontSize', val)
+        },
+        {
+            id: 'txtEditorLineHeight',
+            label: 'Editor line height',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.editorLineHeight || '1.8',
+            placeholder: '1.8',
+            tooltip: 'Line height for the left Markdown editor pane, for example 1.8.',
+            onChange: (val: string) => appearanceValue('editorLineHeight', val)
+        },
+        {
+            id: 'txtPreviewFontSize',
+            label: 'Preview font size',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.previewFontSize || '',
+            placeholder: '17px',
+            tooltip: 'Font size for the right Markdown preview pane, for example 17px.',
+            onChange: (val: string) => appearanceValue('previewFontSize', val)
+        },
+        {
+            id: 'txtPreviewLineHeight',
+            label: 'Preview line height',
+            section: 'Markdown appearance',
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.previewLineHeight || '',
+            placeholder: '1.8',
+            tooltip: 'Line height for the right Markdown preview pane, for example 1.8.',
+            onChange: (val: string) => appearanceValue('previewLineHeight', val)
         }
     ];
 }
@@ -2270,6 +2565,10 @@ window.addEventListener('message', (event) => {
     const m = event.data;
 
     switch (m.command) {
+        case 'webviewError':
+            showToast(m.message || '请求被拒绝：输入超出安全限制');
+            break;
+
         case 'initMarkdown':
             const wasPreviewEditMode = isPreviewEditMode;
             const previewEditScrollState = wasPreviewEditMode
@@ -2304,6 +2603,11 @@ window.addEventListener('message', (event) => {
                 I18n.init(m.settings.language, m.settings.vscodeLanguage);
             }
             applySettings(m.settings, false);
+            break;
+
+        case 'setMarkdownTheme':
+            currentSettings = { ...currentSettings, theme: m.theme };
+            applyExternalMarkdownTheme(m.theme as MarkdownThemePayload);
             break;
 
         case 'saveResult':
@@ -3052,6 +3356,7 @@ function applyFormat(action: string) {
     pushUndoState(editor);
     switch (action) {
         case 'bold': wrapSelection(editor, '**', '**'); break;
+        case 'highlight': wrapSelection(editor, '<mark>', '</mark>'); break;
         case 'italic': wrapSelection(editor, '*', '*'); break;
         case 'strikethrough': wrapSelection(editor, '~~', '~~'); break;
         case 'inlineCode': wrapSelection(editor, '`', '`'); break;
@@ -3926,6 +4231,16 @@ function wireEditor() {
             return;
         }
 
+        if (isMod && e.altKey && e.shiftKey && e.code === 'Digit3') {
+            e.preventDefault();
+            if (editor.selectionStart === editor.selectionEnd) {
+                return;
+            }
+            pushUndoState(editor);
+            applyFormat('highlight');
+            return;
+        }
+
         // Formatting shortcuts
         if (isMod) {
             let handled = true;
@@ -4122,7 +4437,20 @@ function wirePreviewInteractions() {
 
             // Handle anchor links (same document)
             if (href.startsWith('#')) {
-                // Let the browser handle anchor navigation
+                e.preventDefault();
+                e.stopPropagation();
+                const headings = Array.from(preview.querySelectorAll<HTMLElement>('.md-heading[id]')).map(heading => {
+                    const copy = heading.cloneNode(true) as HTMLElement;
+                    copy.querySelectorAll('.heading-anchor').forEach(node => node.remove());
+                    return { id: heading.id, text: copy.textContent || '' };
+                });
+                const id = resolveHeadingId(href.slice(1), link.textContent || '', headings);
+                const heading = id ? document.getElementById(id) : null;
+                if (heading && preview.contains(heading)) {
+                    heading.scrollIntoView({ block: 'start', behavior: 'smooth' });
+                } else {
+                    showToast('未找到唯一的目录目标，请检查目录链接与标题。');
+                }
                 return;
             }
 
@@ -4334,7 +4662,8 @@ if (currentSettings) {
 
 if ((md as any).mermaid) {
     (md as any).mermaid.initialize({
-        startOnLoad: false
+        startOnLoad: false,
+        securityLevel: 'strict'
     });
 }
 
