@@ -1,0 +1,187 @@
+# XLSX, CSV, TSV & Markdown Editor：完整增强版说明
+
+> **历史说明**：本文记录 `1.9.98-local.16` 阶段的配置和实施背景，不代表当前 `2.0.1-local.1` 已迁入 `.11`–`.16` 的全部后续修复。当前版本的取舍、验证和待办以 [迁移决策与验收](docs/07-版本与发布/v2.0.1-local.1-迁移决策与验收.md)为准。
+
+## 目录
+
+- [目标与边界](#1-目标与边界)
+- [最终结构](#2-最终结构)
+- [首次启用](#3-首次启用)
+- [日常使用与修改主题](#4-日常使用与修改主题)
+- [MPE 适配](#5-mpe-适配)
+- [固定配置与外置主题的优先级](#6-固定配置与外置主题的优先级)
+- [构建、验证与 VSIX 安装](#7-构建验证与-vsix-安装)
+- [验收、回退与维护成本](#8-验收回退与维护成本)
+
+## 1. 目标与边界
+
+本 Fork 是个人侧载用的补丁版，当前以原作者仓库 `v1.9.98`（提交 `fd6ed727bf241f6fd2c1380a609e7c728e108ee4`）作为集成基线；`v1.9.97` 仅作为历史对照基线。当前版本为 `1.9.98-local.16`，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`，因此同一个 IDE 中会替换官方扩展，不能并存。
+
+`1.9.98-local.16` 当前锁文件在线审计为 0 项漏洞。运行时公式渲染继续直接使用 `katex`，移除了无自动修复的 `markdown-it-katex`；`.8` 同时移除 Markdown CSP 中无必要的 `unsafe-eval`，并以根级 overrides 升级开发链 `diff`、`serialize-javascript` 及 ExcelJS 使用的 `uuid`。`.9` 新增 h1-h6 标题统一配色配置；`.10` 增加统一 Webview schema、payload/坐标/StyleStorage 容量限制、realpath/symlink 边界和本地 KaTeX CSS/字体；`.11` 修复固定工具栏高度；`.12` 将 Markdown 与表格 Webview 的核心按钮、悬停提示和设置浮层汉化为简体中文；`.13` 的焦点滚动补丁未解决真实故障，`.14` 改为替换 Markdown 工具栏的结构性布局；`.15` 将 Markdown 左侧大纲改为固定 20px 级距、树形引导和原位高亮；`.16` 以内部滚动、渲染批次隔离和诊断输出处理分栏编辑输入跳动。远端实时指针以本次交付后的 `git ls-remote personal refs/heads/main` 输出为准。
+
+本次完整增强版的目标是：只维护一份 Less 主题源码，生成一份 CSS，同时供本扩展和 Markdown Preview Enhanced（MPE）使用；Markdown 正文只写语义明确的 `<mark>重点</mark>`，不再为每篇文档插入 `<style>` 或冗长的 `<span style="...">`。本版本同时收敛外部输入净化、保存前一致性校验、原子写入和版本历史上限。
+
+不在本次范围：重命名 Publisher、发布 Marketplace、修改 XLSX/CSV/TSV 作业逻辑，或自动改写现有 MPE 的 `style.less`。
+
+## 2. 最终结构
+
+```text
+themes/markdown-theme/
+├── theme.less                         # 唯一人工维护入口
+├── partials/                          # 颜色、排版、正文、目录分层
+├── scripts/build-theme.mjs            # 唯一 Less 编译器
+├── scripts/watch-theme.mjs            # 监听 theme.less 与 @import 依赖
+├── scripts/audit-compatibility.mjs    # MPE 样式迁移审计器
+├── adapters/mpe-adapter.less          # MPE 只读取已编译 CSS 的适配模板
+└── dist/
+    ├── markdown-theme.css             # 自动生成；两个预览器共同消费
+    ├── theme-manifest.json            # SHA-256 与依赖清单
+    └── compatibility-report.md        # 审计器生成的迁移报告
+```
+
+数据流为：`theme.less` → 单次 Less 编译 → `markdown-theme.css` → XLSX 插件与 MPE 分别加载。两套插件不会直接编译同一份 Less，也不会跨 Webview 相互污染样式。
+
+## 3. 首次启用
+
+在仓库根目录执行：
+
+```zsh
+cd "/path/to/xlsx-viewer-local-patch"
+npm ci --cache /private/tmp/xlsx-viewer-local-patch-npm-cache --no-audit --no-fund
+npm --prefix themes/markdown-theme ci --cache /private/tmp/xlsx-viewer-markdown-theme-npm-cache --no-audit --no-fund
+npm run theme:build
+pwd
+```
+
+最后一条会输出仓库绝对路径。将该路径替换到 IDE 的用户设置 JSON：
+
+```jsonc
+{
+  "xlsxViewer.md.theme.enabled": true,
+  "xlsxViewer.md.theme.cssFile": "/仓库绝对路径/themes/markdown-theme/dist/markdown-theme.css",
+  "xlsxViewer.md.theme.manifestFile": "/仓库绝对路径/themes/markdown-theme/dist/theme-manifest.json",
+  "xlsxViewer.md.theme.watch": true
+}
+```
+
+在 VS Code、Cursor、Antigravity 中各配置一次。三个 IDE 可指向同一仓库内的 CSS 文件，因此主题内容只维护一份。
+
+## 4. 日常使用与修改主题
+
+Markdown 正文只写：
+
+```html
+普通文字，<mark>这是橙色重点</mark>，后面继续是普通文字。
+```
+
+选中文字后按 `⌘ Command + ⌥ Option + ⇧ Shift + 3`（Windows/Linux：`Ctrl + Alt + Shift + 3`），原生编辑器和 `Split Edit` 左侧编辑区都会写入同样的 `<mark>选中文本</mark>`；右侧预览实时显示橙色高亮。
+
+高亮快捷键是插件内置在扩展包 `package.json` 的 `contributes.keybindings` 中的能力，不需要配置到用户的 `keybindings.json`。此前关于通过 `keybindings.json` 配置本插件重点高亮快捷键的说明已废止；用户级快捷键文件只用于其他个人快捷键，不是本插件的正式交付入口。
+
+左右视图字号可在 IDE 的 `settings.json` 中分别设置：
+
+```json
+{
+  "xlsxViewer.md.editorFontSize": "16px",
+  "xlsxViewer.md.editorLineHeight": "1.8",
+  "xlsxViewer.md.previewFontSize": "17px",
+  "xlsxViewer.md.previewLineHeight": "1.8"
+}
+```
+
+也可打开插件工具栏的 `Settings` 面板，在 `Markdown appearance` 分组调整这些字号、行高，以及 `<mark>` 背景/文字/字重/内边距/圆角和预览背景/文字颜色。该面板是受控配置入口，不允许输入任意 CSS 规则或脚本；设置值保存到扩展配置，并在当前 Webview 即时生效。
+
+标题颜色使用统一配置 `xlsxViewer.md.headingColor`，默认值为 `#569CD6`，同时作用于 Markdown 预览的 h1-h6；Settings 面板中的 `Heading color` 会即时更新当前预览。格式工具栏在窄分栏中会自动换行，按钮保持可点击尺寸；固定头部会按主工具栏与格式工具栏的实际总高度预留空间，不会再被内容区覆盖。
+
+`.10` 的输入边界规则集中在 `src/shared/webviewMessageSchema.ts`：未知 command、错误字段类型、超限数组/字符串/Base64、非法坐标、超大合并范围都会直接拒绝；Markdown 图片只有工作区/文档目录或 `xlsxViewer.md.externalResourceRoots` 中的真实路径可以暴露给 Webview。KaTeX CSS 与字体位于 `resources/md/katex`，不再依赖 CDN。
+
+日常改主题时只编辑 `themes/markdown-theme/theme.less` 或 `partials/*.less`，然后任选一种方式：
+
+```zsh
+# 修改一次后手动构建
+npm run theme:build
+
+# 开发时持续监听 @import 依赖；按 Ctrl + C 停止
+npm run theme:watch
+```
+
+CSS 会原子替换，插件在开启 `xlsxViewer.md.theme.watch` 时自动加载新文件。也可执行命令面板中的：
+
+```text
+Markdown: 重新加载外置 Markdown 主题
+Markdown: 显示外置 Markdown 主题状态
+Markdown: 打开外置 Markdown 主题目录
+```
+
+主题加载约束：仅接受 2 MiB 以内的本地、已编译 CSS；拒绝 `@import`、远程/data/javascript 资源与 `html`、`body` 全局选择器。若当前 CSS 保存坏了，插件会继续保留同一路径上一次成功加载的 CSS，不会使预览白屏。Markdown 渲染结果会移除脚本、`<style>`、事件属性和不安全链接；普通安全的 `mark` 内联样式仍可兼容旧文档。
+
+## 5. MPE 适配
+
+不要让 MPE 与 XLSX 插件直接分别编译 `theme.less`。先运行 `npm run theme:build`，再把 `themes/markdown-theme/adapters/mpe-adapter.less` 中的一行复制到 MPE 的 Global `style.less`，并替换为真实绝对路径：
+
+```less
+@import (inline) "/仓库绝对路径/themes/markdown-theme/dist/markdown-theme.css";
+```
+
+MPE 的 `style.less` 此后只保留这条适配导入；主题细节统一回到 `theme.less`。主题已同时兼容 `.toc-panel` 和 MPE 的 `.md-sidebar-toc`；正文均以 `.markdown-preview` 为作用域。若迁移旧 MPE 样式，执行：
+
+```zsh
+npm run theme:audit -- "/你的/MPE/style.less"
+```
+
+审计会输出 `themes/markdown-theme/dist/compatibility-report.md` 和 `migration-draft.less`：前者标出可直接复用、目录别名和必须人工处理的 `html/body`、`@import` 规则；后者把可安全复用的规则整理为 Less 草稿，但不会被自动加载，必须人工审阅后再合并进 `theme.less` 或对应 partial。
+
+## 6. 固定配置与外置主题的优先级
+
+1. 扩展内置样式：最低优先级。
+2. 旧的 `xlsxViewer.md.mark*`、`preview*` 固定配置：用于不启用外置主题的轻量场景。
+3. 外置 `markdown-theme.css`：启用后最后注入，覆盖同一选择器。
+4. Markdown 正文内 `<style>`：会被安全渲染净化移除；高亮优先使用 `<mark>` 和外置主题。
+
+推荐统一使用外置主题，不要同时把同一属性写在固定设置、主题 CSS 与单篇内联样式中。
+
+## 7. 构建、验证与 VSIX 安装
+
+```zsh
+cd "/path/to/xlsx-viewer-local-patch"
+npm run theme:build
+npm run theme:audit
+npm run check-types
+npm run lint
+npm run verify:security
+npm run package
+npm run verify:local-patch
+npm run verify:theme-system
+npm run verify:docs
+npm test  # 首次运行会下载对应 VS Code Extension Host
+npx --yes --cache /private/tmp/xlsx-viewer-local-patch-npm-cache @vscode/vsce@3.9.2 package --out "release/muhammad-ahmad.xlsx-viewer-1.9.98-local.16.vsix"
+```
+
+通过 IDE 的 `Extensions: Install from VSIX...` 安装；不要直接把解压目录复制到 `~/.vscode/extensions`、`~/.cursor/extensions` 或 `~/.antigravity/extensions`。安装后关闭该扩展的自动更新，避免被官方版本覆盖。
+
+当前 `.16` 发布包为 `release/muhammad-ahmad.xlsx-viewer-1.9.98-local.16.vsix`；包外 SHA-256 为 `9cecc8f21f7286af89a100e5e6081160823d9910adec4136c850152c87517500`。VSIX 内文档不自引用自身哈希。
+
+## 8. 验收、回退与维护成本
+
+| 验收项 | 自动化 | 真实 IDE 手工验收 |
+| --- | --- | --- |
+| Less 单次编译、依赖清单、SHA-256 | 是 | 不需要 |
+| 主题 CSS 注入、路径校验、失败回退 | 类型检查与源码验证 | 打开 Markdown 后确认状态和刷新 |
+| `<mark>` 橙底、目录深色、表格/代码/引用样式 | CSS 选择器验证 | VS Code、Cursor、Antigravity 各至少一次 |
+| h1-h6 默认蓝色与 `xlsxViewer.md.headingColor` 持久化 | 设置默认值、CSS 变量和主题源码验证 | 三个 IDE 各修改一次并重载窗口 |
+| 窄分栏格式工具栏完整显示 | 固定包装器、总高度测量和内容避让源码验证 | 缩窄左右分栏，确认格式栏完整可见、所有工具组可点击且内容区不覆盖 |
+| Webview 超限输入 | schema/安全回归验证 | 大图片源、超大 PDF/反馈、非法表格编辑和超大元数据均被拒绝 |
+| KaTeX 离线资源 | CSS、字体、CSP 和 VSIX 文件范围验证 | 断网打开公式，确认公式仍可渲染 |
+| XLSX、CSV、TSV 无回归 | 构建与静态验证 | 各打开、编辑、保存一次 |
+
+| 事项 | 成本 | 风险 |
+| --- | --- | --- |
+| 改颜色、字号、表格或目录样式 | 1–5 分钟 | 低 |
+| 新增主题 partial 或 CSS 规则 | 10–30 分钟 | 低 |
+| 迁移旧 MPE 样式 | 30–90 分钟 | 中，审计器可缩小人工范围 |
+| 上游小版本升级 | 1–3 小时 | 中，需重新验证 Markdown 与三类表格 |
+| 上游重构 Markdown Webview | 4–8 小时 | 中高，需要重新核对注入点与 DOM class |
+
+公开发布前的额外成本：仍需完成许可证核验和三 IDE 人工验收；当前锁文件在线审计为 0 项，公式渲染器已完成本地替换，后续只需持续验证数学公式回归。
+
+回退时重新安装官方扩展即可；Markdown 源文件只含标准 `<mark>`，不会丢失内容。保留当前 VSIX、Git 提交与 `themes/markdown-theme`，再升级或回退。

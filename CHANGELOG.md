@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.1-local.1 - Fork Migration (source and build verified)
+- Based on the official `v2.0.1` commit, carried forward the selected `1.9.98-local.10` appearance, theme, security, and file consistency changes.
+- Kept upstream language switching, Markdown fence/Mermaid handling, and spreadsheet improvements.
+- Blocked Preview Edit saves for documents containing fenced code or tabs; added unique heading fallback for internal Markdown links.
+- Extension Host and real IDE acceptance remain pending; see `docs/07-版本与发布/v2.0.1-local.1-迁移决策与验收.md`.
+
 ## v2.0.1 - Chinese Language Support & Language Switcher
 - Added Chinese (Simplified) localization across XLSX, CSV, TSV, and Markdown editors.
 - Added a header language switcher button for all 4 file types with instant toggling.

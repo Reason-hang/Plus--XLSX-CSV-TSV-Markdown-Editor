@@ -1,5 +1,9 @@
 # XLSX, CSV, TSV & Markdown Editor - VS Code Extension
 
+> 本 Fork 的当前开发版本为 `2.0.1-local.1`，以原作者 `v2.0.1` 提交 `4d0c836d128586f1d717544f02354408b0b931a2` 为基线，迁入 `1.9.98-local.10` 的自研能力。功能取舍与验证边界见 [迁移决策与验收](docs/07-版本与发布/v2.0.1-local.1-迁移决策与验收.md)；[旧增强版说明](README-LOCAL-PATCH.md)保留为历史资料。涉及围栏代码或 Tab 排版的文件暂不能用 Preview Edit 保存，请使用 Split Edit 或原生编辑器。
+
+后续上游升级：固定目标 tag 与旧版提交／VSIX，逐项复审功能台账；对上游已覆盖的能力退役本地补丁，对仍需保留的能力重放精选补丁并按功能验收。每轮在独立 worktree 完成构建、行为用例和目标 IDE 验收，再更新发布分支；旧版 tag／VSIX 保留用于回装。发生上游重构时重新判断实现，不能仅凭 Git 无冲突判定功能可用。
+
 This open-source extension lets you view and edit XLSX, CSV, TSV, and GitHub Flavored Markdown files directly in VS Code. XLSX, CSV, and TSV now share one unified spreadsheet editor, one webview, and one editing pipeline, so selection, virtualization, sorting, filtering, conversion, settings, and save behavior stay consistent across tabular formats.
 
 ## Overview
