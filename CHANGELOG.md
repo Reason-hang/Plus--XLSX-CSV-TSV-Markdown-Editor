@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.0.1-local.3 - Markdown 工具栏配置与返回顶部
+
+- 新增返回顶部按钮及当前 Markdown 预览命令，支持不同滚动容器与分屏同步设置。
+- 新增四列紧凑卡片配置，支持拖动、Alt 方向键排序、按钮与说明图片显隐、草稿应用／取消、恢复默认。
+- 用稳定项目 ID 和运行上下文分离用户偏好与模式限制，移动原节点以保留设置、主题等绑定；独立布局保存带回执和冲突提示。
+- 补充脚本 nonce；测试入口禁止隐式下载最新版 IDE，必须显式指定现有可执行文件且启动前获授权。
+- 自动化、浏览器夹具、真实 IDE 与安装结果分层记录；限制及操作说明见 `docs/04-开发文档/Markdown工具栏布局与返回顶部.md`。
+
 ## v2.0.1-local.1 - Fork Migration (source and build verified)
 - Based on the official `v2.0.1` commit, carried forward the selected `1.9.98-local.10` appearance, theme, security, and file consistency changes.
 - Kept upstream language switching, Markdown fence/Mermaid handling, and spreadsheet improvements.

@@ -1,6 +1,8 @@
 # XLSX, CSV, TSV & Markdown Editor - VS Code Extension
 
-> 本 Fork 的当前开发版本为 `2.0.1-local.2`，以原作者 `v2.0.1` 提交 `4d0c836d128586f1d717544f02354408b0b931a2` 为基线；`.1` 的迁移取舍见 [迁移决策与验收](docs/07-版本与发布/v2.0.1-local.1-迁移决策与验收.md)。[旧增强版说明](README-LOCAL-PATCH.md)保留为历史资料。
+> 本 Fork 的当前开发版本为 `2.0.1-local.3`，以原作者 `v2.0.1` 提交 `4d0c836d128586f1d717544f02354408b0b931a2` 为基线；`.1` 的迁移取舍见 [迁移决策与验收](docs/07-版本与发布/v2.0.1-local.1-迁移决策与验收.md)。[旧增强版说明](README-LOCAL-PATCH.md)保留为历史资料。
+
+`.3` 新增 Markdown 返回顶部与紧凑工具栏配置：点击齿轮 → **自定义工具栏…**，拖动或 `Alt + 方向键` 排序，用 `×`／`+` 隐藏和添加按钮／Logo，点击“应用布局”保存。布局默认四列，窄分栏降三列或两列。用法、配置兼容和当前验收限制见 [工具栏布局与返回顶部](docs/04-开发文档/Markdown工具栏布局与返回顶部.md)。安装插件不要求升级 IDE；本项目不自动重启／重载工作窗口，运行状态由用户在合适时机核验。
 
 本地版本的保存边界：复杂 Markdown 在 Preview Edit 修改后若无法证明往返保真，会拒绝保存，请使用 Split Edit；非 UTF-8 的 CSV／TSV 和包含图表、透视表等不受 ExcelJS 保真支持的 XLSX，也会拒绝覆盖。CSV／TSV 的单元格样式仅存在 IDE 本地状态，48 小时后会被清理，需长期保存样式请转换为 XLSX。Markdown 远程 HTTPS 图片默认不加载；确需显示时在本机设置 `xlsxViewer.md.allowRemoteImages=true`，重新打开预览。工具栏反馈表单会提交至原作者的 Google 表单。
 

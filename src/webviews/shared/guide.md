@@ -1,5 +1,7 @@
 # Webview 共享组件说明
 
+`.3` 的 Markdown 工具栏由 `../md/mdToolbarController.ts` 管理原节点与布局草稿，纯模型在 `src/shared/mdToolbarLayout.ts`；完整约定见 [工具栏说明](../../../docs/04-开发文档/Markdown工具栏布局与返回顶部.md)。共享 `ToolbarManager.setButtons()` 仍只在初始化调用，不能用来应用 Markdown 排序，以免破坏设置／主题绑定。
+
 ## 目录
 
 - [组件](#组件)
