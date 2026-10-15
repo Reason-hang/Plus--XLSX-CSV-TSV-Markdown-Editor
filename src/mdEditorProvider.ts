@@ -10,6 +10,7 @@ import { isPathWithin, isPathWithinRealpath } from './shared/pathSafety';
 import { writeBufferFileAtomically, writeTextFileAtomically } from './shared/atomicFile';
 import { hashBuffer, hashFile } from './shared/fileFingerprint';
 import { validateWebviewMessage, WEBVIEW_LIMITS } from './shared/webviewMessageSchema';
+import { resolveMdToolbarLayout } from './shared/mdToolbarLayout';
 
 /**
  * Appearance values are user-configurable CSS property values, not arbitrary
@@ -32,6 +33,20 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
     private readonly webviewPanels = new Set<vscode.WebviewPanel>();
     private readonly themeOutput = vscode.window.createOutputChannel('XLSX Viewer Markdown Theme');
     private readonly markdownThemeChangeDisposable: vscode.Disposable;
+    private toolbarSaveQueue: Promise<void> = Promise.resolve();
+
+    backToTop(): void {
+        const panel = [...this.webviewPanels].find(entry => entry.active);
+        if (panel) {
+            void panel.webview.postMessage({ command: 'backToTop' });
+        } else {
+            void vscode.window.showInformationMessage('请先激活本插件的 Markdown 预览。');
+        }
+    }
+
+    private toolbarRevision(raw: unknown): string {
+        return hashBuffer(Buffer.from(JSON.stringify(raw ?? null), 'utf8'));
+    }
 
     constructor(private readonly context: vscode.ExtensionContext) {
         this.markdownThemeChangeDisposable = this.markdownThemeService.onDidChange(theme => {
@@ -89,6 +104,8 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
             showOutline: cfg.get('md.showOutline', true),
             showLineNumbers: cfg.get('md.showLineNumbers', true),
             moveMdButtonsToEnd: cfg.get('md.moveMdButtonsToEnd', false),
+            toolbarLayout: cfg.get('md.toolbarLayout', null),
+            toolbarLayoutRevision: this.toolbarRevision(cfg.get('md.toolbarLayout', null)),
             showPopups: cfg.get('showPopups', true),
             isMdEnabled,
             language: cfg.get('language', 'auto'),
@@ -407,6 +424,24 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                     return;
                 }
                 switch (message.command) {
+                    case 'saveMdToolbarLayout': {
+                        // Serialize writes within this Extension Host; cross-window writes remain last-writer-wins.
+                        const save = async () => {
+                            try {
+                                const cfg = vscode.workspace.getConfiguration('xlsxViewer');
+                                if (this.toolbarRevision(cfg.get('md.toolbarLayout', null)) !== message.revision) {
+                                    throw new Error('布局已被其他窗口修改，请关闭并重新打开配置后重试。');
+                                }
+                                await cfg.update('md.toolbarLayout', resolveMdToolbarLayout(message.layout), vscode.ConfigurationTarget.Global);
+                                await webviewPanel.webview.postMessage({ command: 'toolbarLayoutSaved', requestId: message.requestId, ok: true });
+                            } catch (error) {
+                                await webviewPanel.webview.postMessage({ command: 'toolbarLayoutSaved', requestId: message.requestId, ok: false, message: error instanceof Error ? error.message : '布局保存失败，草稿已保留。' });
+                            }
+                        };
+                        this.toolbarSaveQueue = this.toolbarSaveQueue.then(save, save);
+                        await this.toolbarSaveQueue;
+                        break;
+                    }
                     case 'webviewReady':
                         try {
                             // Read the markdown file
@@ -1146,7 +1181,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                     JavaScript is disabled in this webview, so the Markdown preview cannot load.
                 </div>
             </noscript>
-            <script src="${scriptUri}"></script>
+            <script nonce="${nonce}" src="${scriptUri}"></script>
         </body>
         </html>`;
     }

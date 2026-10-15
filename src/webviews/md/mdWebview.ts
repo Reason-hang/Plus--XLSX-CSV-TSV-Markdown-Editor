@@ -40,6 +40,9 @@ import { gfm } from 'turndown-plugin-gfm';
 import mermaid from 'mermaid';
 import { getPreviewEditTrailingNewlines, hasUnsafePreviewEditSource } from './previewEditSafety';
 import { resolveHeadingId } from './anchorNavigation';
+import { MdToolbarController } from './mdToolbarController';
+
+let mdToolbarController: MdToolbarController | null = null;
 
 I18n.setVsCodeApi(vscode);
 I18n.init();
@@ -210,6 +213,8 @@ let currentSettings: {
     showOutline: boolean;
     showLineNumbers: boolean;
     moveMdButtonsToEnd: boolean;
+    toolbarLayout?: unknown;
+    toolbarLayoutRevision?: string;
     showPopups: boolean;
     isMdEnabled: boolean;
     textDirection: 'auto' | 'ltr' | 'rtl';
@@ -381,12 +386,28 @@ function wrapCodeLines(html: string): string {
 }
 
 function setButtonsEnabled(enabled: boolean) {
-    const ids = ['enableMdEditorButton', 'disableMdEditorButton', 'toggleViewButton', 'toggleEditModeButton', 'previewEditButton', 'saveEditsButton',
-        'cancelEditsButton', 'toggleBackgroundButton', 'openSettingsButton', 'versionHistoryButton'];
-    ids.forEach((id) => {
-        const el = $(id) as HTMLButtonElement;
-        if (el) el.disabled = !enabled;
-    });
+    // Existing save call sites use this hook after updating isSaving.
+    if (enabled === !isSaving) mdToolbarController?.apply();
+}
+
+/** Navigation only; never render, save, move the selection or change scrollLeft. */
+function backToTop() {
+    if (scrollTimeout) clearTimeout(scrollTimeout);
+    activeScrollSource = 'preview';
+    const content = $('content');
+    const preview = $('markdownPreview');
+    if (!currentSettings.stickyToolbar && !isEditMode) {
+        if (content) content.scrollTop = 0;
+    } else if (preview) {
+        preview.scrollTop = 0;
+    }
+    if (isEditMode && !isPreviewEditMode && currentSettings.syncScroll) {
+        const editor = $('markdownEditor');
+        if (editor) editor.scrollTop = 0;
+    }
+    scrollTimeout = setTimeout(() => { activeScrollSource = null; }, 200);
+    updateScrollSpy();
+    updateProgressBar();
 }
 
 function getPreviewSnapshot(): string {
@@ -1100,29 +1121,15 @@ function updateFormattingToolbarHeight() {
 
 // ===== Edit Mode (Split View) =====
 function setEditMode(enabled: boolean) {
+    if (enabled && (isVersionPreviewMode || isSaving)) return;
     isEditMode = enabled;
     isPreviewEditMode = false;
     document.body.classList.toggle('edit-mode', enabled);
     document.body.classList.remove('preview-edit-mode');
 
-    const editBtn = $('toggleEditModeButton');
-    const previewEditBtn = $('previewEditButton');
-    const saveBtn = $('saveEditsButton');
-    const cancelBtn = $('cancelEditsButton');
     const container = $('markdownContainer');
     const editor = $('markdownEditor') as HTMLTextAreaElement;
     const preview = $('markdownPreview');
-
-    const saveTarget = (saveBtn?.closest('.tooltip') as HTMLElement | null) || saveBtn;
-    const cancelTarget = (cancelBtn?.closest('.tooltip') as HTMLElement | null) || cancelBtn;
-    const editTarget = (editBtn?.closest('.tooltip') as HTMLElement | null) || editBtn;
-    const previewEditTarget = (previewEditBtn?.closest('.tooltip') as HTMLElement | null) || previewEditBtn;
-
-    if (editTarget) editTarget.classList.toggle('hidden', enabled);
-    if (previewEditTarget) previewEditTarget.classList.toggle('hidden', enabled);
-
-    if (saveTarget) saveTarget.classList.toggle('hidden', !enabled);
-    if (cancelTarget) cancelTarget.classList.toggle('hidden', !enabled);
 
     // Toggle formatting toolbar
     const fmtToolbar = $('formattingToolbar');
@@ -1185,6 +1192,7 @@ function setEditMode(enabled: boolean) {
     }
 
     updateStatusInfo();
+    mdToolbarController?.apply();
 }
 
 // ===== Preview Edit Mode (WYSIWYG) =====
@@ -1213,28 +1221,14 @@ function hasUnsavedMarkdownEdits(): boolean {
 }
 
 function setPreviewEditMode(enabled: boolean) {
+    if (enabled && (isVersionPreviewMode || isSaving)) return;
     isPreviewEditMode = enabled;
     isEditMode = enabled;
     document.body.classList.toggle('edit-mode', enabled);
     document.body.classList.toggle('preview-edit-mode', enabled);
 
-    const editBtn = $('toggleEditModeButton');
-    const previewEditBtn = $('previewEditButton');
-    const saveBtn = $('saveEditsButton');
-    const cancelBtn = $('cancelEditsButton');
     const container = $('markdownContainer');
     const preview = $('markdownPreview');
-
-    const saveTarget = (saveBtn?.closest('.tooltip') as HTMLElement | null) || saveBtn;
-    const cancelTarget = (cancelBtn?.closest('.tooltip') as HTMLElement | null) || cancelBtn;
-    const editTarget = (editBtn?.closest('.tooltip') as HTMLElement | null) || editBtn;
-    const previewEditTarget = (previewEditBtn?.closest('.tooltip') as HTMLElement | null) || previewEditBtn;
-
-    if (editTarget) editTarget.classList.toggle('hidden', enabled);
-    if (previewEditTarget) previewEditTarget.classList.toggle('hidden', enabled);
-
-    if (saveTarget) saveTarget.classList.toggle('hidden', !enabled);
-    if (cancelTarget) cancelTarget.classList.toggle('hidden', !enabled);
 
     // Show formatting toolbar in preview edit mode
     const fmtToolbar = $('formattingToolbar');
@@ -1280,6 +1274,7 @@ function setPreviewEditMode(enabled: boolean) {
     }
 
     updateStatusInfo();
+    mdToolbarController?.apply();
 }
 
 function ensureVersionPreviewBanner(): HTMLElement {
@@ -1331,6 +1326,7 @@ function setVersionPreviewMode(enabled: boolean, label?: string) {
             banner.classList.add('hidden');
         }
     }
+    mdToolbarController?.apply();
 }
 
 let lastEditorScrollTop = 0;
@@ -1389,7 +1385,7 @@ function restorePreviewEditScroll(scrollState: { top: number; left: number } | n
 }
 
 function performSave(exitAfterSave = false) {
-    if (isSaving || !isEditMode) return;
+    if (isSaving || !isEditMode || isVersionPreviewMode) return;
     let previewMarkdown: string | null = null;
     if (isPreviewEditMode) {
         const preview = $('markdownPreview');
@@ -1442,6 +1438,7 @@ function performSave(exitAfterSave = false) {
 }
 
 function cancelEdit() {
+    if (isSaving || isVersionPreviewMode) return;
     currentContent = originalContent;
     const editor = $('markdownEditor') as HTMLTextAreaElement;
     if (editor) {
@@ -2178,15 +2175,11 @@ function applySettings(settings: any, persist = false) {
     if (tocPanel) tocPanel.classList.toggle('hidden', !currentSettings.showOutline);
 
     if (toolbarManager) {
-        reorderMdToolbarButtons();
         const btn = toolbarManager.getButton('toggleTocButton');
         if (btn) btn.classList.toggle('active', !!currentSettings.showOutline);
     }
 
-    if (toolbarManager) {
-        toolbarManager.setButtonVisibility('disableMdEditorButton', !!currentSettings.isMdEnabled);
-        toolbarManager.setButtonVisibility('enableMdEditorButton', !currentSettings.isMdEnabled);
-    }
+    mdToolbarController?.receive(currentSettings.toolbarLayout, currentSettings.toolbarLayoutRevision || '', currentSettings.moveMdButtonsToEnd);
 
     if (persist) {
         vscode.postMessage({ command: 'updateSettings', settings: currentSettings });
@@ -2257,16 +2250,6 @@ function createMdSettingsDefinitions(): SettingDefinition[] {
             defaultValue: currentSettings.showLineNumbers,
             onChange: (val: boolean) => {
                 currentSettings.showLineNumbers = val;
-                applySettings(currentSettings, true);
-            }
-        },
-        {
-            id: 'chkMoveMdButtonsToEnd',
-            label: I18n.t('settings.moveMdButtonsToEnd', 'Move Enable/Disable MD Buttons Near Help'),
-            tooltip: I18n.t('settings.moveMdButtonsToEndTip', 'Place the Enable/Disable MD buttons just before Help & Feedback instead of at the start of the toolbar.'),
-            defaultValue: currentSettings.moveMdButtonsToEnd,
-            onChange: (val: boolean) => {
-                currentSettings.moveMdButtonsToEnd = val;
                 applySettings(currentSettings, true);
             }
         },
@@ -2513,6 +2496,9 @@ function updateTocTranslations() {
 }
 
 function updateAllMdTranslations() {
+    const customize = $('customizeMdToolbarButton');
+    if (customize) customize.textContent = I18n.getLanguage() === 'zh' ? '自定义工具栏…' : 'Customize toolbar…';
+    toolbarManager?.setButtonTooltip('backToTopButton', I18n.getLanguage() === 'zh' ? '返回文档顶部' : 'Back to document top');
     if (toolbarManager) {
         toolbarManager.setButtonLabel('enableMdEditorButton', I18n.t('toolbar.enableMd', 'Enable MD'));
         toolbarManager.setButtonTooltip('enableMdEditorButton', I18n.t('toolbar.enableMdTooltip', 'Enable Markdown Viewer for all Markdown files (Make Default)'));
@@ -2564,37 +2550,12 @@ function initializeSettings() {
 
     // Initialize manager
     mdSettingsManager = new SettingsManager('openSettingsButton', 'settingsPanel', 'settingsCancelButton', settingsDefs);
-}
-
-function reorderMdToolbarButtons() {
-    if (!toolbarManager) return;
-
-    const toolbar = document.getElementById('toolbar');
-    const enableBtn = toolbarManager.getButton('enableMdEditorButton');
-    const disableBtn = toolbarManager.getButton('disableMdEditorButton');
-    const toggleViewBtn = toolbarManager.getButton('toggleViewButton');
-    const helpBtn = toolbarManager.getButton('helpButton');
-
-    if (!toolbar || !enableBtn || !disableBtn || !toggleViewBtn || !helpBtn) {
-        return;
-    }
-
-    const enableWrap = enableBtn.closest('.tooltip') as HTMLElement | null;
-    const disableWrap = disableBtn.closest('.tooltip') as HTMLElement | null;
-    const toggleViewWrap = toggleViewBtn.closest('.tooltip') as HTMLElement | null;
-    const helpWrap = helpBtn.closest('.tooltip') as HTMLElement | null;
-
-    if (!enableWrap || !disableWrap || !toggleViewWrap || !helpWrap) {
-        return;
-    }
-
-    if (currentSettings.moveMdButtonsToEnd) {
-        toolbar.insertBefore(enableWrap, helpWrap);
-        toolbar.insertBefore(disableWrap, helpWrap);
-    } else {
-        toolbar.insertBefore(enableWrap, toggleViewWrap);
-        toolbar.insertBefore(disableWrap, toggleViewWrap);
-    }
+    const customize = document.createElement('button');
+    customize.id = 'customizeMdToolbarButton';
+    customize.className = 'toggle-button';
+    customize.textContent = I18n.getLanguage() === 'zh' ? '自定义工具栏…' : 'Customize toolbar…';
+    customize.addEventListener('click', () => { mdSettingsManager?.close(); mdToolbarController?.open(); });
+    $('settingsPanel')!.insertBefore(customize, $('settingsPanel')!.firstChild);
 }
 
 // ===== Header Height =====
@@ -2609,6 +2570,12 @@ window.addEventListener('message', (event) => {
     const m = event.data;
 
     switch (m.command) {
+        case 'backToTop':
+            backToTop();
+            break;
+        case 'toolbarLayoutSaved':
+            mdToolbarController?.saved(m.requestId, m.ok, m.message);
+            break;
         case 'webviewError':
             if (isSaving) {
                 isSaving = false;
@@ -2729,14 +2696,18 @@ function wireButtons() {
     toolbarManager = new ToolbarManager('toolbar');
 
     toolbarManager.setButtons(buildToolbarButtons());
-    reorderMdToolbarButtons();
 
     I18n.onLanguageChange(() => {
         updateAllMdTranslations();
     });
 
     // Inject tooltip if variables are present
-    InfoTooltip.inject('toolbar', (window as any).viewImgUri, (window as any).logoSvgUri, 'GitHub Flavored Markdown');
+    const info = InfoTooltip.inject('toolbar', (window as any).viewImgUri, (window as any).logoSvgUri, 'GitHub Flavored Markdown');
+    if (info) info.id = 'mdToolbarInfo';
+    mdToolbarController = new MdToolbarController({
+        context: () => ({ editing: isEditMode, history: isVersionPreviewMode, saving: isSaving, mdEnabled: currentSettings.isMdEnabled }),
+        save: (layout, requestId, revision) => vscode.postMessage({ command: 'saveMdToolbarLayout', layout, requestId, revision })
+    });
 
     // Theme manager
     new ThemeManager('toggleBackgroundButton', {
@@ -2843,6 +2814,13 @@ function buildToolbarButtons() {
                 }
                 applySettings({ textDirection: nextDir }, true);
             }
+        },
+        {
+            id: 'backToTopButton',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16M12 20V8m-6 6 6-6 6 6"/></svg>',
+            tooltip: I18n.getLanguage() === 'zh' ? '返回文档顶部' : 'Back to document top',
+            cls: 'icon-only',
+            onClick: backToTop
         },
         {
             id: 'searchButton',
@@ -2955,26 +2933,12 @@ function buildToolbarButtons() {
         },
     ];
 
-    if (currentSettings.moveMdButtonsToEnd) {
-        const enableIndex = buttons.findIndex((b) => b.id === 'enableMdEditorButton');
-        const enableButton = enableIndex >= 0 ? buttons.splice(enableIndex, 1)[0] : undefined;
-        const disableIndex = buttons.findIndex((b) => b.id === 'disableMdEditorButton');
-        const disableButton = disableIndex >= 0 ? buttons.splice(disableIndex, 1)[0] : undefined;
-        const helpIndex = buttons.findIndex((button) => button.id === 'helpButton');
-        if (enableButton && disableButton) {
-            if (helpIndex >= 0) {
-                buttons.splice(helpIndex, 0, enableButton, disableButton);
-            } else {
-                buttons.push(enableButton, disableButton);
-            }
-        }
-    }
-
     return buttons;
 }
 
 // ===== Keyboard Shortcuts =====
 document.addEventListener('keydown', (e) => {
+    if (document.querySelector('.md-layout-backdrop:not([hidden])')) return;
     const isCmdOrCtrl = e.ctrlKey || e.metaKey;
 
     if (isPreviewEditMode && isCmdOrCtrl && e.key.toLowerCase() === 'z' && !e.shiftKey) {

@@ -61,7 +61,7 @@ export function getWebviewContent(webviewPanel: vscode.WebviewPanel, context: vs
         </div>
     </noscript>
 
-    <script src="${scriptUri}"></script>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
     }

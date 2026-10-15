@@ -2,7 +2,7 @@
     "name": "xlsx-viewer",
     "displayName": "XLSX, CSV, TSV & Markdown Editor",
     "description": "View and edit xlsx files with colors, fonts and styles (supporting in-table editing), and view and edit CSV, TSV & Markdown files in VS Code. This is an open-source project.",
-    "version": "2.0.1-local.2",
+    "version": "2.0.1-local.3",
     "publisher": "muhammad-ahmad",
     "engines": {
         "vscode": "^1.74.0"
@@ -76,6 +76,11 @@
             }
         ],
         "commands": [
+            {
+                "command": "xlsx-viewer.mdBackToTop",
+                "title": "返回文档顶部",
+                "category": "Markdown"
+            },
             {
                 "command": "xlsx-viewer.goBackToMdPreview",
                 "title": "Open in Preview",
@@ -326,7 +331,20 @@
                 "xlsxViewer.md.moveMdButtonsToEnd": {
                     "type": "boolean",
                     "default": false,
+                    "deprecationMessage": "仅用于首次布局迁移；请在 Markdown 设置中使用自定义工具栏。",
                     "description": "Move the Enable/Disable MD buttons near Help & Feedback instead of keeping them at the start of the toolbar."
+                },
+                "xlsxViewer.md.toolbarLayout": {
+                    "type": ["object", "null"],
+                    "scope": "application",
+                    "default": null,
+                    "description": "Markdown 工具栏用户布局；建议通过预览内的设置 → 自定义工具栏修改。null 使用默认布局并兼容旧位置设置。",
+                    "properties": {
+                        "version": { "type": "integer", "enum": [1] },
+                        "order": { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 64 } },
+                        "hidden": { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 64 } }
+                    },
+                    "required": ["version", "order", "hidden"]
                 },
                 "xlsxViewer.md.showLineNumbers": {
                     "type": "boolean",

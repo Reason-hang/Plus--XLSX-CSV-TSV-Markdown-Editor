@@ -1,3 +1,5 @@
+import { isMdToolbarLayout } from './mdToolbarLayout';
+
 export type WebviewSurface = 'markdown' | 'spreadsheet';
 
 export interface WebviewMessageValidationResult {
@@ -45,6 +47,7 @@ const MARKDOWN_COMMANDS = new Set([
     'resolveImageUris',
     'restoreVersion',
     'saveMarkdown',
+    'saveMdToolbarLayout',
     'savePdfData',
     'setLanguage',
     'showVersionHistory',
@@ -393,6 +396,15 @@ export function validateWebviewMessage(message: unknown, surface: WebviewSurface
                 : reject('WEBVIEW_FIELD_INVALID', 'toggleView 的视图字段必须是布尔值。');
         case 'toggleMdAssociation':
             return typeof message.enable === 'boolean' ? pass() : reject('WEBVIEW_FIELD_INVALID', 'enable 必须是布尔值。');
+        case 'saveMdToolbarLayout': {
+            if (surface !== 'markdown' || !isMdToolbarLayout(message.layout)) {
+                return reject('WEBVIEW_FIELD_INVALID', '工具栏布局格式无效。');
+            }
+            const request = validateString(message.requestId, 'requestId', 128);
+            if (!request.ok) { return request; }
+            return typeof message.revision === 'string' && /^[a-f0-9]{64}$/.test(message.revision)
+                ? pass() : reject('WEBVIEW_FIELD_INVALID', '布局版本校验值无效。');
+        }
         case 'updateSettings': {
             if (!isRecord(message.settings)) {return reject('WEBVIEW_FIELD_INVALID', 'settings 必须是对象。');}
             if (surface === 'markdown' && message.settings.previewPosition !== undefined &&

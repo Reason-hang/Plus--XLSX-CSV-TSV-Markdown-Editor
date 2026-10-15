@@ -391,6 +391,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
+        vscode.commands.registerCommand('xlsx-viewer.mdBackToTop', () => mdProvider.backToTop()),
         vscode.commands.registerCommand('xlsx-viewer.reloadMarkdownTheme', () => mdProvider.reloadMarkdownTheme()),
         vscode.commands.registerCommand('xlsx-viewer.showMarkdownThemeStatus', () => mdProvider.showMarkdownThemeStatus()),
         vscode.commands.registerCommand('xlsx-viewer.revealMarkdownThemeFolder', () => mdProvider.revealMarkdownThemeFolder())

@@ -206,6 +206,8 @@ export class SettingsManager {
         window.addEventListener('scroll', this.repositionHandlers, true);
     }
 
+    close(): void { this.closePanel(); }
+
     private closePanel() {
         this.panel!.classList.add('hidden');
         this.panel!.classList.remove('floating');
