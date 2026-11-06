@@ -34,8 +34,13 @@ ${found.hasPendingXlsxEdits}
 function receive(message){${found.saveResult}}
 scheduleAutoSave('text');
 const pendingBefore=hasPendingXlsxEdits();
+// 假设第一次请求只包含文本，保存期间又发生了格式和结构操作。
+pendingWorksheetOps.push({type:'insertRowAbove',index:2});
+pendingCellStyleEdits.set('2:1',{row:2,col:1,bold:true});
+const lateOperationsBefore=pendingWorksheetOps.length;
+const lateStylesBefore=pendingCellStyleEdits.size;
 receive({command:'saveResult',ok:true,isAutosave:true});
-globalThis.result={pendingBefore,pendingAfter:hasPendingXlsxEdits(),timerScheduled:autoSaveTimer!==null};
+globalThis.result={pendingBefore,pendingAfter:hasPendingXlsxEdits(),timerScheduled:autoSaveTimer!==null,lateOperationsBefore,lateOperationsAfter:pendingWorksheetOps.length,lateStylesBefore,lateStylesAfter:pendingCellStyleEdits.size};
 `;
 const compiled = ts.transpileModule(fixture, { compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.None } }).outputText;
 const context = { setTimeout, clearTimeout };
