@@ -1,0 +1,74 @@
+.markdown-preview {
+  blockquote {
+    background-color: @surface-background;
+    color: @muted-color;
+    border-left: 4px solid #569cd6;
+    padding: 10px 16px;
+    margin: 16px 0;
+  }
+
+  blockquote p,
+  blockquote li,
+  blockquote strong,
+  blockquote em {
+    color: @muted-color;
+  }
+
+  hr {
+    border: 0;
+    border-top: 1px solid @border-color;
+    background: transparent;
+  }
+
+  table,
+  table.md-table {
+    background-color: @preview-background;
+    color: @text-color;
+    border-collapse: collapse;
+  }
+
+  table th {
+    background-color: @surface-alt-background;
+    color: @strong-color;
+    border: 1px solid #4a4a4a;
+  }
+
+  table td {
+    background-color: @preview-background;
+    color: @text-color;
+    border: 1px solid @table-border-color;
+  }
+
+  table tr:nth-child(even) td {
+    background-color: #242424;
+  }
+
+  code,
+  code.inline-code {
+    background-color: @surface-alt-background;
+    color: @inline-code-color;
+    padding: 2px 5px;
+    border-radius: 4px;
+  }
+
+  pre {
+    background-color: @surface-background;
+    border: 1px solid #3e3e42;
+    border-radius: 6px;
+    padding: 14px 16px;
+  }
+
+  pre code {
+    background-color: transparent;
+    color: @text-color;
+    padding: 0;
+  }
+
+  mark {
+    background-color: @mark-background;
+    color: inherit;
+    font-weight: inherit;
+    padding: 0 2px;
+    border-radius: 2px;
+  }
+}

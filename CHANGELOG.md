@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.7-local.1（候选）
+
+- 以上游 `v2.0.7` 为基线，迁入个人工具栏布局、Markdown 外观与主题、安全保存和历史能力；自研与上游归属见自研差异台账。
+- 使用上游的浮动返回顶部与插件自动保存，不再迁入旧版自研返回顶部按钮。
+- 调整工具栏两层对齐，工具栏布局写入扩展状态并兼容读取旧设置，避免依赖旧布局配置键的注册状态。
+- 已完成本地构建、隔离自动化与部分浏览器检查；真实 IDE 保存、恢复与安装状态以实际验收记录为准。
+
 ## v2.0.7 – Automatic Saving & Settings UI Rework
 - Added optional **Auto Save** for each supported file type (disabled by default).
 - Added a configurable save delay in Editor Settings.

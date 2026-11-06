@@ -1,7 +1,13 @@
 .vscode/**
+.codex/**
 .vscode-test/**
+.github/**
+release/**
+scripts/**
 out/**
 node_modules/**
+themes/markdown-theme/node_modules/**
+themes/markdown-theme/node_modules
 src/**
 .gitignore
 .yarnrc

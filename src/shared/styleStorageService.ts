@@ -20,6 +20,49 @@ export interface StructuredStyleData {
 
 export type FileMetadata = Omit<StructuredStyleData, 'schemaVersion'>;
 
+export const STYLE_STORAGE_LIMITS = {
+    maxCells: 50_000,
+    maxMerges: 10_000,
+    maxJsonBytes: 4 * 1024 * 1024
+} as const;
+
+export class StyleMetadataLimitError extends Error {
+    readonly code = 'STYLE_METADATA_LIMIT_EXCEEDED';
+
+    constructor(message: string) {
+        super(message);
+        this.name = 'StyleMetadataLimitError';
+    }
+}
+
+export function assertStyleMetadataWithinLimits(metadata: FileMetadata): void {
+    const cells = metadata?.cells;
+    const merges = metadata?.merges || [];
+    const cellCount = cells && typeof cells === 'object' ? Object.keys(cells).length : 0;
+
+    if (cellCount > STYLE_STORAGE_LIMITS.maxCells) {
+        throw new StyleMetadataLimitError(`样式元数据 cells 不能超过 ${STYLE_STORAGE_LIMITS.maxCells} 项。`);
+    }
+    if (!Array.isArray(merges) || merges.length > STYLE_STORAGE_LIMITS.maxMerges) {
+        throw new StyleMetadataLimitError(`样式元数据 merges 不能超过 ${STYLE_STORAGE_LIMITS.maxMerges} 项。`);
+    }
+
+    let serialized: string;
+    try {
+        serialized = JSON.stringify({
+            schemaVersion: 2,
+            cells: cells || {},
+            merges
+        });
+    } catch {
+        throw new StyleMetadataLimitError('样式元数据无法序列化。');
+    }
+    const byteSize = Buffer.byteLength(serialized, 'utf8');
+    if (byteSize > STYLE_STORAGE_LIMITS.maxJsonBytes) {
+        throw new StyleMetadataLimitError(`样式元数据 JSON 不能超过 ${STYLE_STORAGE_LIMITS.maxJsonBytes} 字节。`);
+    }
+}
+
 const STORAGE_KEY_PREFIX = 'xlsxViewer.styles.';
 const STORAGE_INDEX_KEY = 'xlsxViewer.styleIndex';
 const STORAGE_VIEW_MODE_KEY_PREFIX = 'xlsxViewer.viewMode.';
@@ -115,10 +158,16 @@ export class StyleStorageService {
         }
 
         if ((payload as any).schemaVersion === 2) {
-            return {
+            const metadata = {
                 cells: (payload as any).cells || {},
                 merges: (payload as any).merges || []
             };
+            try {
+                assertStyleMetadataWithinLimits(metadata);
+            } catch {
+                return undefined;
+            }
+            return metadata;
         }
 
         // Legacy format (just styles mapping)
@@ -128,10 +177,17 @@ export class StyleStorageService {
                 cells[cellKey] = { style };
             }
         }
-        return { cells, merges: [] };
+        const metadata = { cells, merges: [] };
+        try {
+            assertStyleMetadataWithinLimits(metadata);
+        } catch {
+            return undefined;
+        }
+        return metadata;
     }
 
     public async saveMetadata(uri: vscode.Uri, metadata: FileMetadata): Promise<void> {
+        assertStyleMetadataWithinLimits(metadata);
         const key = this.getStorageKey(uri);
         const data: FileStyleData = {
             styles: {
@@ -215,6 +271,10 @@ export class StyleStorageService {
 
         metadata.cells = cells;
         await this.saveMetadata(uri, metadata);
+    }
+
+    public assertMetadataWithinLimits(metadata: FileMetadata): void {
+        assertStyleMetadataWithinLimits(metadata);
     }
 
     /**

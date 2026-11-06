@@ -1,5 +1,12 @@
 out
 dist
+!themes/
+!themes/markdown-theme/
+!themes/markdown-theme/dist/
+!themes/markdown-theme/dist/markdown-theme.css
+!themes/markdown-theme/dist/theme-manifest.json
+!themes/markdown-theme/dist/compatibility-report.md
+!themes/markdown-theme/dist/migration-draft.less
 node_modules
 .vscode-test/
 *.vsix

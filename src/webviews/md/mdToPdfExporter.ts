@@ -157,6 +157,15 @@ export class MdToPdfExporter {
                 const src = `data:image/svg+xml;base64,${svgBase64}`;
 
                 const img = new Image();
+                const timer = window.setTimeout(() => {
+                    img.onload = null;
+                    img.onerror = null;
+                    resolve('');
+                }, 10000);
+                const finish = (value: string) => {
+                    window.clearTimeout(timer);
+                    resolve(value);
+                };
                 img.onload = () => {
                     try {
                         const canvas = document.createElement('canvas');
@@ -168,15 +177,15 @@ export class MdToPdfExporter {
                             ctx.fillStyle = '#ffffff';
                             ctx.fillRect(0, 0, canvas.width, canvas.height);
                             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                            resolve(canvas.toDataURL('image/png'));
+                            finish(canvas.toDataURL('image/png'));
                         } else {
-                            resolve(src);
+                            finish(src);
                         }
                     } catch {
-                        resolve(src);
+                        finish(src);
                     }
                 };
-                img.onerror = () => resolve('');
+                img.onerror = () => finish('');
                 img.src = src;
             } catch {
                 resolve('');

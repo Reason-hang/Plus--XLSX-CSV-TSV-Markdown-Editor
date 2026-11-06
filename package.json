@@ -2,14 +2,14 @@
     "name": "xlsx-viewer",
     "displayName": "XLSX, CSV, TSV & Markdown Editor",
     "description": "View and edit xlsx files with colors, fonts and styles (supporting in-table editing), and view and edit CSV, TSV & Markdown files in VS Code. This is an open-source project.",
-    "version": "2.0.7",
+    "version": "2.0.7-local.1",
     "publisher": "muhammad-ahmad",
     "engines": {
-        "vscode": "^1.60.0"
+        "vscode": "^1.74.0"
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/Mahmadabid/XLSX-CSV-TSV-MARKDOWN-Editor-Vscode-Extension"
+        "url": "https://github.com/Reason-hang/Plus--XLSX-CSV-TSV-Markdown-Editor"
     },
     "keywords": [
         "xlsx",
@@ -98,6 +98,21 @@
                 "command": "xlsx-viewer.convertFile",
                 "title": "Convert File...",
                 "category": "Spreadsheet/CSV/TSV"
+            },
+            {
+                "command": "xlsx-viewer.reloadMarkdownTheme",
+                "title": "重新加载外置 Markdown 主题",
+                "category": "Markdown"
+            },
+            {
+                "command": "xlsx-viewer.showMarkdownThemeStatus",
+                "title": "显示外置 Markdown 主题状态",
+                "category": "Markdown"
+            },
+            {
+                "command": "xlsx-viewer.revealMarkdownThemeFolder",
+                "title": "打开外置 Markdown 主题目录",
+                "category": "Markdown"
             }
         ],
         "menus": {
@@ -323,6 +338,105 @@
                     "default": false,
                     "description": "Move the Enable/Disable MD buttons near Help & Feedback instead of keeping them at the start of the toolbar."
                 },
+                "xlsxViewer.md.markBackgroundColor": {
+                    "type": "string",
+                    "default": "#FF4E00",
+                    "description": "Global background color for <mark> text in the Markdown preview."
+                },
+                "xlsxViewer.md.markTextColor": {
+                    "type": "string",
+                    "default": "inherit",
+                    "description": "Global text color for <mark> text in the Markdown preview. Use 'inherit' to follow the preview text color."
+                },
+                "xlsxViewer.md.markFontWeight": {
+                    "type": "string",
+                    "default": "inherit",
+                    "description": "Global font weight for <mark> text in the Markdown preview. Use 'inherit' to keep normal Markdown text weight."
+                },
+                "xlsxViewer.md.markPadding": {
+                    "type": "string",
+                    "default": "0 2px",
+                    "description": "Global CSS padding for <mark> text in the Markdown preview."
+                },
+                "xlsxViewer.md.markBorderRadius": {
+                    "type": "string",
+                    "default": "2px",
+                    "description": "Global CSS border radius for <mark> text in the Markdown preview."
+                },
+                "xlsxViewer.md.headingColor": {
+                    "type": "string",
+                    "default": "#569CD6",
+                    "description": "Color for all Markdown preview heading levels (h1-h6)."
+                },
+                "xlsxViewer.md.previewBackgroundColor": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Markdown preview pane background color. Leave empty to follow the IDE theme."
+                },
+                "xlsxViewer.md.previewTextColor": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Markdown preview pane text color. Leave empty to follow the IDE theme."
+                },
+                "xlsxViewer.md.previewFontSize": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Markdown preview pane font size, for example '15px'. Leave empty to follow the IDE theme."
+                },
+                "xlsxViewer.md.previewLineHeight": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Markdown preview pane line height, for example '1.7'. Leave empty to follow the IDE theme."
+                },
+                "xlsxViewer.md.editorFontSize": {
+                    "type": "string",
+                    "default": "16px",
+                    "description": "Markdown split-edit source pane font size, for example '16px'."
+                },
+                "xlsxViewer.md.editorLineHeight": {
+                    "type": "string",
+                    "default": "1.8",
+                    "description": "Markdown split-edit source pane line height, for example '1.8'."
+                },
+                "xlsxViewer.md.theme.enabled": {
+                    "type": "boolean",
+                    "scope": "machine",
+                    "default": false,
+                    "description": "启用外置 Markdown 主题 CSS。启用后仅加载已编译 CSS，不在扩展内编译 Less。"
+                },
+                "xlsxViewer.md.theme.cssFile": {
+                    "type": "string",
+                    "scope": "machine",
+                    "default": "",
+                    "description": "外置 Markdown 主题 CSS 的绝对路径，例如 /Users/you/.../themes/markdown-theme/dist/markdown-theme.css。"
+                },
+                "xlsxViewer.md.theme.manifestFile": {
+                    "type": "string",
+                    "scope": "machine",
+                    "default": "",
+                    "description": "可选的主题 manifest 绝对路径；留空时自动读取 CSS 同目录的 theme-manifest.json 用于 SHA-256 校验。"
+                },
+                "xlsxViewer.md.theme.watch": {
+                    "type": "boolean",
+                    "scope": "machine",
+                    "default": true,
+                    "description": "监听外置主题 CSS 和 manifest 的变更，保存后自动刷新所有已打开的 Markdown 预览。"
+                },
+                "xlsxViewer.md.externalResourceRoots": {
+                    "type": "array",
+                    "scope": "machine",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "允许 Markdown 引用的工作区外图片目录绝对路径；会检查符号链接目标。"
+                },
+                "xlsxViewer.md.allowRemoteImages": {
+                    "type": "boolean",
+                    "scope": "machine",
+                    "default": false,
+                    "description": "允许 Markdown 预览请求 HTTPS 远程图片；可能向图片服务器暴露 IP 与打开文档的时间。"
+                },
                 "xlsxViewer.md.showLineNumbers": {
                     "type": "boolean",
                     "default": true,
@@ -336,7 +450,18 @@
                     "description": "Text size percentage for Markdown preview and editor (default: 100%)."
                 }
             }
-        }
+        },
+        "keybindings": [
+            {
+                "key": "ctrl+alt+shift+3",
+                "mac": "cmd+alt+shift+3",
+                "command": "editor.action.insertSnippet",
+                "when": "editorTextFocus && editorLangId == markdown && editorHasSelection",
+                "args": {
+                    "snippet": "<mark>${TM_SELECTED_TEXT}</mark>"
+                }
+            }
+        ]
     },
     "scripts": {
         "build": "npm run compile",
@@ -351,7 +476,11 @@
         "pretest": "npm run compile-tests && npm run compile && npm run lint",
         "check-types": "tsc --noEmit",
         "lint": "eslint src/**/*.ts",
-        "test": "vscode-test"
+        "test": "vscode-test",
+        "theme:build": "npm --prefix themes/markdown-theme run build",
+        "theme:watch": "npm --prefix themes/markdown-theme run watch",
+        "theme:audit": "npm --prefix themes/markdown-theme run audit",
+        "test:local": "npm run compile-tests && mocha --ui tdd out/test/previewEditSafety.test.js out/test/spreadsheetRenderSafety.test.js out/test/webviewMessageSchema.test.js out/test/mdToolbarStorage.test.js out/test/mdToolbarLayout.test.js out/test/anchorNavigation.test.js && node scripts/test-md-history.cjs && node scripts/test-md-theme.cjs && node scripts/test-tabular-safety.cjs && node scripts/test-spreadsheet-provider.cjs"
     },
     "devDependencies": {
         "@types/mocha": "^8.2.2",
@@ -383,7 +512,6 @@
         "markdown-it-emoji": "^3.0.0",
         "markdown-it-footnote": "^4.0.0",
         "markdown-it-ins": "^4.0.0",
-        "markdown-it-katex": "^2.0.3",
         "markdown-it-mark": "^4.0.0",
         "markdown-it-sub": "^2.0.0",
         "markdown-it-sup": "^2.0.0",

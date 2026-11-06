@@ -1,11 +1,7 @@
 name: Publish to Open VSX + VS Marketplace
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "package.json"
+  workflow_dispatch:
 
 permissions:
   contents: write   # REQUIRED for GitHub Releases
@@ -26,6 +22,11 @@ jobs:
       # 3️⃣ Install dependencies
       - name: Install dependencies
         run: npm ci
+
+      - name: Verify source and local regressions
+        run: |
+          npm run package
+          npm run test:local
 
       # 4️⃣ Read package info
       - name: Read package info

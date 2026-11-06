@@ -20,7 +20,7 @@ import abbr from 'markdown-it-abbr';
 // @ts-ignore
 import { full as emoji } from 'markdown-it-emoji';
 // @ts-ignore
-import katex from 'markdown-it-katex';
+import katex from './markdownItKatex';
 
 import hljs from 'highlight.js';
 import { ThemeManager } from '../shared/themeManager';
@@ -29,6 +29,8 @@ import { ToolbarManager } from '../shared/toolbarManager';
 import { applyToolbarLayout } from '../shared/toolbarLayout';
 import { Utils } from '../shared/utils';
 import { MdToPdfExporter } from './mdToPdfExporter';
+import { MdToolbarController } from './mdToolbarController';
+import { getPreviewEditTrailingNewlines, hasUnsafePreviewEditSource } from './previewEditSafety';
 import { Icons } from '../shared/icons';
 import { vscode, debounce } from '../shared/common';
 import { FeedbackModal } from '../shared/feedbackModal';
@@ -170,6 +172,7 @@ let originalContent = '';
 let currentContent = '';
 let toolbarManager: ToolbarManager | null = null;
 let mdSettingsManager: SettingsManager | null = null;
+let mdToolbarController: MdToolbarController | null = null;
 const resolvedImageUriCache = new Map<string, string>();
 let documentUri = '';
 let documentDirUri = '';
@@ -331,6 +334,72 @@ turndownService.addRule('katexBlock', {
 });
 
 import { detectIsRTL } from '../shared/rtlUtils';
+import { resolveHeadingId } from './anchorNavigation';
+
+type MarkdownAppearanceSettings = {
+    markBackgroundColor?: string;
+    markTextColor?: string;
+    markFontWeight?: string;
+    markPadding?: string;
+    markBorderRadius?: string;
+    headingColor?: string;
+    previewBackgroundColor?: string;
+    previewTextColor?: string;
+    previewFontSize?: string;
+    previewLineHeight?: string;
+    editorFontSize?: string;
+    editorLineHeight?: string;
+};
+
+function cssValueOrFallback(value: unknown, fallback: string): string {
+    return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+function setOptionalCssValue(style: CSSStyleDeclaration, property: string, value: unknown): void {
+    if (typeof value === 'string' && value.trim()) {
+        style.setProperty(property, value.trim());
+    } else {
+        style.removeProperty(property);
+    }
+}
+
+function applyMarkdownAppearance(appearance?: MarkdownAppearanceSettings): void {
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty('--xlsx-viewer-md-mark-background', cssValueOrFallback(appearance?.markBackgroundColor, '#FF4E00'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-color', cssValueOrFallback(appearance?.markTextColor, 'inherit'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-font-weight', cssValueOrFallback(appearance?.markFontWeight, 'inherit'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-padding', cssValueOrFallback(appearance?.markPadding, '0 2px'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-border-radius', cssValueOrFallback(appearance?.markBorderRadius, '2px'));
+    rootStyle.setProperty('--xlsx-viewer-md-heading-color', cssValueOrFallback(appearance?.headingColor, '#569CD6'));
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-background', appearance?.previewBackgroundColor);
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-color', appearance?.previewTextColor);
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-font-size', appearance?.previewFontSize);
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-line-height', appearance?.previewLineHeight);
+    rootStyle.setProperty('--xlsx-viewer-md-editor-font-size', cssValueOrFallback(appearance?.editorFontSize, '16px'));
+    rootStyle.setProperty('--xlsx-viewer-md-editor-line-height', cssValueOrFallback(appearance?.editorLineHeight, '1.8'));
+}
+
+type MarkdownThemePayload = {
+    css?: string;
+    status?: 'disabled' | 'loaded' | 'fallback' | 'error';
+    sourcePath?: string;
+    sha256?: string;
+    message?: string;
+};
+
+function applyExternalMarkdownTheme(theme?: MarkdownThemePayload): void {
+    const styleId = 'xlsx-viewer-external-markdown-theme';
+    const css = typeof theme?.css === 'string' ? theme.css : '';
+    const existing = document.getElementById(styleId) as HTMLStyleElement | null;
+    if (!css) {
+        existing?.remove();
+        return;
+    }
+    const style = existing || document.createElement('style');
+    style.id = styleId;
+    style.textContent = css;
+    if (!existing) document.head.appendChild(style);
+}
 
 // Settings
 let currentSettings = {
@@ -349,10 +418,15 @@ let currentSettings = {
     autoSave: false,
     autoSaveDelay: 1000,
     autoSaveDelayOverride: 0,
-    editorAutoSaveDelay: 1000
+    editorAutoSaveDelay: 1000,
+    theme: undefined as MarkdownThemePayload | undefined,
+    appearance: undefined as MarkdownAppearanceSettings | undefined
 };
 let autoSaveTimer: any = null;
 let lastSaveContent = '';
+let previewEditBaselineHtml: string | null = null;
+let previewEditBaselineMarkdown: string | null = null;
+let pendingSavedPreviewHtml: string | null = null;
 
 const MIN_TEXT_SIZE = 70;
 const MAX_TEXT_SIZE = 200;
@@ -472,6 +546,8 @@ function setButtonsEnabled(enabled: boolean) {
         const el = $(id) as HTMLButtonElement;
         if (el) el.disabled = !enabled;
     });
+    mdToolbarController?.apply();
+    updateTextSizeButtonsState();
 }
 
 function getPreviewSnapshot(): string {
@@ -984,19 +1060,24 @@ function applyResolvedImageUris(resolved: Record<string, string>, requestedSourc
 
     const preview = $('markdownPreview');
     if (preview) {
+        const currentRenderEpoch = renderEpoch;
         preview.querySelectorAll('img[data-md-src]').forEach((node) => {
             const source = (node.getAttribute('data-md-src') || '').trim();
             const uri = resolvedImageUriCache.get(source) || resolvedImageUriCache.get(decodeURIComponentSafe(source));
             if (!uri) {
                 return;
             }
-            node.addEventListener('load', refreshDataLineCache, { once: true });
+            node.addEventListener('load', () => {
+                if (currentRenderEpoch === renderEpoch && currentSettings.syncScroll && isEditMode && !isPreviewEditMode) {
+                    refreshDataLineCache();
+                }
+            }, { once: true });
             node.setAttribute('src', uri);
             node.removeAttribute('data-md-src');
         });
     }
 
-    refreshDataLineCache();
+    if (currentSettings.syncScroll && isEditMode && !isPreviewEditMode) refreshDataLineCache();
     processNextImageBatches();
 }
 
@@ -1081,11 +1162,23 @@ function sanitizeMarkdownCopyLinkArtifacts(markdown: string): string {
         return '';
     }
 
-    return markdown.split('\n').map((line) => {
-        if (!/^\s{0,3}#{1,6}\s+/.test(line)) {
+    let fence: { marker: string; length: number } | null = null;
+    return markdown.split('\n').map(line => {
+        const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/);
+        if (fenceMatch) {
+            const marker = fenceMatch[1][0];
+            if (!fence) {
+                fence = { marker, length: fenceMatch[1].length };
+            } else if (fence.marker === marker && fenceMatch[1].length >= fence.length &&
+                line.slice(fenceMatch[0].length).trim() === '') {
+                fence = null;
+            }
             return line;
         }
-        return stripHeadingCopyLinkArtifacts(line);
+        if (fence || !/^\s{0,3}#{1,6}\s+/.test(line)) {
+            return line;
+        }
+        return line.replace(/\s*\[#\]\(#[^)\s]+(?:\s+"Copy link")?\)/g, '');
     }).join('\n');
 }
 
@@ -1153,7 +1246,8 @@ function buildToc(tokens: any[]) {
 }
 
 // ===== Rendering =====
-function renderMermaidFlowcharts() {
+function renderMermaidFlowcharts(expectedRenderEpoch?: number) {
+    if (expectedRenderEpoch !== undefined && expectedRenderEpoch !== renderEpoch) return;
     const mermaidLib = (md as any).mermaid;
     if (!mermaidLib) return;
 
@@ -1167,23 +1261,111 @@ function renderMermaidFlowcharts() {
 
     mermaidLib.initialize({
         startOnLoad: false,
-        theme: isDark ? 'dark' : 'default'
+        theme: isDark ? 'dark' : 'default',
+        securityLevel: 'strict'
     });
 
     mermaidLib.run({
         nodes: Array.from(nodes) as any
+    }).then(() => {
+        if (expectedRenderEpoch === undefined || expectedRenderEpoch === renderEpoch) refreshSyncMetrics();
     }).catch((err: any) => {
         console.error('Mermaid render error:', err);
     });
 }
 
 let isRenderingMarkdown = false;
+let renderEpoch = 0;
+const scrollDiagnosticLimit = 120;
+let scrollDiagnosticCount = 0;
+let scrollDiagnosticUntil = 0;
+
+function reportScrollDiagnostic(phase: string, force = false): void {
+    if (!isEditMode || scrollDiagnosticCount >= scrollDiagnosticLimit || (!force && Date.now() > scrollDiagnosticUntil)) return;
+    const editor = $('markdownEditor') as HTMLTextAreaElement | null;
+    const preview = $('markdownPreview');
+    const content = $('content');
+    vscode.postMessage({
+        command: 'reportScrollDiagnostics',
+        phase,
+        epoch: renderEpoch,
+        scrollTops: {
+            editor: Math.max(0, Math.round(editor?.scrollTop || 0)),
+            preview: Math.max(0, Math.round(preview?.scrollTop || 0)),
+            content: Math.max(0, Math.round(content?.scrollTop || 0)),
+            document: Math.max(0, Math.round(document.scrollingElement?.scrollTop || 0))
+        },
+        settings: { syncScroll: currentSettings.syncScroll, stickyToolbar: currentSettings.stickyToolbar }
+    });
+    scrollDiagnosticCount++;
+}
+
+function isSafeRenderedUrl(value: string, attributeName: string): boolean {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) {
+        return !trimmed.startsWith('//');
+    }
+
+    try {
+        const protocol = new URL(trimmed, 'https://xlsx-viewer.invalid/').protocol.toLowerCase();
+        if (attributeName === 'src') {
+            return protocol === 'http:' || protocol === 'https:' ||
+                (protocol === 'data:' && /^data:image\/(?:png|gif|jpe?g|webp|bmp|avif)(?:;|,)/i.test(trimmed));
+        }
+        return protocol === 'http:' || protocol === 'https:' || protocol === 'mailto:';
+    } catch {
+        return false;
+    }
+}
+
+function sanitizeRenderedMarkdownHtml(html: string): string {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+
+    template.content.querySelectorAll(
+        'script, style, iframe, object, embed, base, meta, link, portal, form, foreignObject'
+    ).forEach(element => element.remove());
+
+    template.content.querySelectorAll<HTMLElement>('*').forEach(element => {
+        Array.from(element.attributes).forEach(attribute => {
+            const name = attribute.name.toLowerCase();
+            if (name.startsWith('on') || name === 'srcdoc' || name === 'srcset') {
+                element.removeAttribute(attribute.name);
+                return;
+            }
+
+            if (name === 'style' && /url\s*\(|@import|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:/i.test(attribute.value)) {
+                element.removeAttribute(attribute.name);
+                return;
+            }
+
+            if (element.tagName.toLowerCase() === 'img' && name === 'src' && shouldResolveLocalImage(attribute.value)) {
+                const source = attribute.value.trim();
+                if (!/^[a-z][a-z0-9+.-]*:/i.test(source) || /^file:\/\//i.test(source) || /^[a-z]:[/\\]/i.test(source)) {
+                    if (!element.hasAttribute('data-md-src')) element.setAttribute('data-md-src', source);
+                }
+                // Local images are loaded only after the host checks their real path.
+                element.removeAttribute(attribute.name);
+                return;
+            }
+
+            const urlAttributes = new Set(['href', 'src', 'xlink:href', 'formaction', 'action', 'poster', 'cite', 'background']);
+            if (urlAttributes.has(name) && !isSafeRenderedUrl(attribute.value, name)) {
+                element.removeAttribute(attribute.name);
+            }
+        });
+    });
+
+    return template.innerHTML;
+}
 
 function renderMarkdown(content: string) {
     I18n.detectAndApplyFromContent(content);
     const preview = $('markdownPreview');
     if (preview) {
+        const currentRenderEpoch = ++renderEpoch;
         isRenderingMarkdown = true;
+        reportScrollDiagnostic('render-before-replace', true);
         const editor = $('markdownEditor') as HTMLTextAreaElement | null;
         const isEditorFocused = !!editor && document.activeElement === editor;
         const savedScrollTop = preview.scrollTop;
@@ -1192,7 +1374,7 @@ function renderMarkdown(content: string) {
         const normalizedContent = sanitizeMarkdownCopyLinkArtifacts(content || '');
         const tokens = md.parse(normalizedContent, env);
         addHeadingIds(tokens);
-        preview.innerHTML = md.renderer.render(tokens, md.options, env);
+        preview.innerHTML = sanitizeRenderedMarkdownHtml(md.renderer.render(tokens, md.options, env));
 
         refreshSyncMetrics();
 
@@ -1216,18 +1398,25 @@ function renderMarkdown(content: string) {
         preview.querySelectorAll('img').forEach((node) => {
             if (!(node instanceof HTMLImageElement)) return;
             if (!node.complete) {
-                node.addEventListener('load', refreshDataLineCache, { once: true });
+                node.addEventListener('load', () => {
+                    if (currentRenderEpoch === renderEpoch) refreshSyncMetrics();
+                }, { once: true });
             }
         });
         updateToc(tokens);
         requestAnimationFrame(() => {
+            if (currentRenderEpoch !== renderEpoch) return;
+            reportScrollDiagnostic('render-after-replace', true);
             updateScrollSpy();
             updateProgressBar();
             reapplySearch();
             requestLocalImageResolution();
-            renderMermaidFlowcharts();
+            renderMermaidFlowcharts(currentRenderEpoch);
             requestAnimationFrame(() => {
-                isRenderingMarkdown = false;
+                if (currentRenderEpoch === renderEpoch) {
+                    isRenderingMarkdown = false;
+                    reportScrollDiagnostic('render-transaction-complete', true);
+                }
             });
         });
     }
@@ -1256,6 +1445,7 @@ function updateFormattingToolbarHeight() {
 
 // ===== Edit Mode (Split View) =====
 function setEditMode(enabled: boolean) {
+    if (enabled && (isVersionPreviewMode || isSaving)) return;
     isEditMode = enabled;
     isPreviewEditMode = false;
     document.body.classList.toggle('edit-mode', enabled);
@@ -1341,10 +1531,33 @@ function setEditMode(enabled: boolean) {
     }
 
     updateStatusInfo();
+    mdToolbarController?.apply();
+    updateTextSizeButtonsState();
 }
 
 // ===== Preview Edit Mode (WYSIWYG) =====
+function getPreviewEditHtml(preview: HTMLElement): string {
+    const clone = preview.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('.table-hover-tools, .heading-anchor, .code-block-header, .code-copy').forEach(node => node.remove());
+    clone.querySelectorAll('td, th').forEach(cellNode => {
+        const cell = cellNode as HTMLTableCellElement;
+        if ((cell.textContent || '').replace(/\u00a0/g, '').trim() === '') cell.innerHTML = '';
+    });
+    return clone.innerHTML;
+}
+
+function hasUnsavedMarkdownEdits(): boolean {
+    if (!isEditMode) return currentContent !== originalContent;
+    if (isPreviewEditMode) {
+        const preview = $('markdownPreview');
+        return !!preview && getPreviewEditHtml(preview) !== previewEditBaselineHtml;
+    }
+    const editor = $('markdownEditor') as HTMLTextAreaElement | null;
+    return !!editor && editor.value !== originalContent;
+}
+
 function setPreviewEditMode(enabled: boolean) {
+    if (enabled && (isVersionPreviewMode || isSaving)) return;
     isPreviewEditMode = enabled;
     isEditMode = enabled;
     document.body.classList.toggle('edit-mode', enabled);
@@ -1387,9 +1600,13 @@ function setPreviewEditMode(enabled: boolean) {
             preview.contentEditable = 'true';
             enhancePreviewTablesForEditing();
             initializePreviewHistory();
+            previewEditBaselineHtml = getPreviewEditHtml(preview);
+            previewEditBaselineMarkdown = turndownService.turndown(previewEditBaselineHtml);
             preview.focus({ preventScroll: true });
         }
     } else {
+        previewEditBaselineHtml = null;
+        previewEditBaselineMarkdown = null;
         // Exit preview edit mode
         if (preview) {
             preview.contentEditable = 'false';
@@ -1408,6 +1625,8 @@ function setPreviewEditMode(enabled: boolean) {
     }
 
     updateStatusInfo();
+    mdToolbarController?.apply();
+    updateTextSizeButtonsState();
 }
 
 function ensureVersionPreviewBanner(): HTMLElement {
@@ -1465,6 +1684,8 @@ function setVersionPreviewMode(enabled: boolean, label?: string) {
             banner.classList.add('hidden');
         }
     }
+    mdToolbarController?.apply();
+    updateTextSizeButtonsState();
 }
 
 let lastEditorScrollTop = 0;
@@ -1523,8 +1744,28 @@ function restorePreviewEditScroll(scrollState: { top: number; left: number } | n
 }
 
 function performSave(exitAfterSave = false, silent = false) {
-    if (isSaving || !isEditMode) return;
+    if (isSaving || !isEditMode || isVersionPreviewMode) return;
     flushLivePreviewRender();
+    let previewMarkdown: string | null = null;
+    let previewHtml: string | null = null;
+    if (isPreviewEditMode) {
+        const preview = $('markdownPreview');
+        if (!preview || previewEditBaselineHtml === null || previewEditBaselineMarkdown === null) {
+            showToast('预览编辑状态尚未就绪，请改用分栏编辑。');
+            return;
+        }
+        previewHtml = getPreviewEditHtml(preview);
+        if (previewHtml === previewEditBaselineHtml) {
+            previewMarkdown = originalContent;
+        } else {
+            const trailingNewlines = getPreviewEditTrailingNewlines(originalContent, previewEditBaselineMarkdown);
+            if (hasUnsafePreviewEditSource(originalContent) || trailingNewlines === null || /<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(previewHtml)) {
+                showToast('此文档无法在预览编辑中保真保存，请改用分栏编辑。');
+                return;
+            }
+            previewMarkdown = turndownService.turndown(previewHtml) + trailingNewlines;
+        }
+    }
     isSaving = true;
     shouldExitEditMode = exitAfterSave;
     setButtonsEnabled(false);
@@ -1539,40 +1780,14 @@ function performSave(exitAfterSave = false, silent = false) {
 
     if (isPreviewEditMode) {
         rememberPreviewEditScroll();
-
-        // Convert preview HTML back to markdown
-        const preview = $('markdownPreview');
-        if (preview) {
-            // Sync checkbox checked state to attributes before cloning for Turndown
-            preview.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                const input = cb as HTMLInputElement;
-                if (input.checked) {
-                    input.setAttribute('checked', '');
-                } else {
-                    input.removeAttribute('checked');
-                }
-            });
-
-            const clone = preview.cloneNode(true) as HTMLElement;
-            clone.querySelectorAll('.table-hover-tools').forEach(node => node.remove());
-            clone.querySelectorAll('.heading-anchor').forEach(node => node.remove());
-            clone.querySelectorAll('.code-block-header').forEach(node => node.remove());
-            clone.querySelectorAll('.code-copy').forEach(node => node.remove());
-            clone.querySelectorAll('td, th').forEach((cellNode) => {
-                const cell = cellNode as HTMLTableCellElement;
-                if ((cell.textContent || '').replace(/\u00a0/g, '').trim() === '') {
-                    cell.innerHTML = '';
-                }
-            });
-            currentContent = turndownService.turndown(clone.innerHTML);
-        }
+        currentContent = previewMarkdown as string;
+        pendingSavedPreviewHtml = previewHtml;
     } else {
         if (editorEl) {
             currentContent = editorEl.value;
         }
     }
 
-    currentContent = sanitizeMarkdownCopyLinkArtifacts(currentContent);
     if (editorEl && editorEl.value !== currentContent) {
         editorEl.value = currentContent;
     }
@@ -1589,11 +1804,13 @@ function scheduleMarkdownAutoSave() {
     autoSaveTimer = setTimeout(() => {
         autoSaveTimer = null;
         if (isSaving) { scheduleMarkdownAutoSave(); return; }
-        if (isPreviewEditMode || currentContent !== originalContent) performSave(false, true);
+        const preview = $('markdownPreview');
+        if (isPreviewEditMode ? !!preview && getPreviewEditHtml(preview) !== previewEditBaselineHtml : currentContent !== originalContent) performSave(false, true);
     }, delay);
 }
 
 function cancelEdit() {
+    if (isSaving || isVersionPreviewMode) return;
     if (livePreviewTimer) {
         clearTimeout(livePreviewTimer);
         livePreviewTimer = null;
@@ -1651,6 +1868,8 @@ function flushLivePreviewRender() {
 function onEditorInput() {
     const editor = $('markdownEditor') as HTMLTextAreaElement;
     if (!editor) return;
+    scrollDiagnosticUntil = Date.now() + 1000;
+    reportScrollDiagnostic('editor-input', true);
 
     activeScrollSource = 'editor';
     if (scrollTimeout) clearTimeout(scrollTimeout);
@@ -1823,9 +2042,15 @@ function refreshEditorLineCache() {
 }
 
 function refreshSyncMetrics() {
+    updateCachedLineHeight();
+    if (!currentSettings.syncScroll || isPreviewEditMode || !isEditMode) {
+        cachedDataLineElements = [];
+        cachedPreviewLineMap = [];
+        cachedEditorLineMap = [];
+        return;
+    }
     refreshDataLineCache();
     refreshEditorLineCache();
-    updateCachedLineHeight();
 }
 
 function refreshDataLineCache() {
@@ -2319,6 +2544,13 @@ function updateTextDirection(sampleText?: string) {
 function applySettings(settings: any, persist = false) {
     if (!settings) return;
     currentSettings = { ...currentSettings, ...settings };
+    applyMarkdownAppearance(currentSettings.appearance);
+    applyExternalMarkdownTheme(currentSettings.theme);
+    for (const [key, value] of Object.entries(currentSettings.appearance || {})) {
+        const id = `txt${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+        const input = document.getElementById(id) as HTMLInputElement | null;
+        if (input && input !== document.activeElement && typeof value === 'string') input.value = value;
+    }
 
     Utils.showPopupsEnabled = (currentSettings as any).showPopups !== false;
 
@@ -2424,8 +2656,11 @@ function applySettings(settings: any, persist = false) {
     }
 
     if (persist) {
-        vscode.postMessage({ command: 'updateSettings', settings: currentSettings });
+        const { theme: _theme, ...settingsToSave } = currentSettings;
+        vscode.postMessage({ command: 'updateSettings', settings: settingsToSave });
     }
+    mdToolbarController?.apply();
+    updateTextSizeButtonsState();
 }
 
 function updateTextSizeButtonsState() {
@@ -2562,6 +2797,10 @@ function adjustPreviewHeadingLevel(delta: number) {
 }
 
 function createMdSettingsDefinitions(): SettingDefinition[] {
+    const appearanceValue = (key: keyof MarkdownAppearanceSettings, value: string) => {
+        currentSettings.appearance = { ...(currentSettings.appearance || {}), [key]: value };
+        applySettings(currentSettings, true);
+    };
     return [
         {
             id: 'chkWordWrap',
@@ -2739,6 +2978,138 @@ function createMdSettingsDefinitions(): SettingDefinition[] {
                 I18n.setLanguage('zh', true);
             },
             defaultValue: I18n.getLanguageSetting() === 'zh'
+        },
+        {
+            id: 'txtMarkBackgroundColor',
+            label: I18n.getLanguage() === 'zh' ? '高亮背景色' : 'Highlight background',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markBackgroundColor || '#FF4E00',
+            placeholder: '#FF4E00',
+            tooltip: 'Background color for standard <mark> highlights, for example #FF4E00.',
+            onChange: (val: string) => appearanceValue('markBackgroundColor', val)
+        },
+        {
+            id: 'txtMarkTextColor',
+            label: I18n.getLanguage() === 'zh' ? '高亮文字颜色' : 'Highlight text color',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markTextColor || 'inherit',
+            placeholder: 'inherit',
+            tooltip: 'Text color for <mark> highlights, or inherit to follow the preview text color.',
+            onChange: (val: string) => appearanceValue('markTextColor', val)
+        },
+        {
+            id: 'txtMarkFontWeight',
+            label: I18n.getLanguage() === 'zh' ? '高亮文字粗细' : 'Highlight weight',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markFontWeight || 'inherit',
+            placeholder: 'inherit',
+            tooltip: 'Font weight for <mark> highlights, for example 700 or inherit.',
+            onChange: (val: string) => appearanceValue('markFontWeight', val)
+        },
+        {
+            id: 'txtMarkPadding',
+            label: I18n.getLanguage() === 'zh' ? '高亮内边距' : 'Highlight padding',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markPadding || '0 2px',
+            placeholder: '0 2px',
+            tooltip: 'Padding around <mark> highlights, for example 0 2px.',
+            onChange: (val: string) => appearanceValue('markPadding', val)
+        },
+        {
+            id: 'txtMarkBorderRadius',
+            label: I18n.getLanguage() === 'zh' ? '高亮圆角' : 'Highlight radius',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markBorderRadius || '2px',
+            placeholder: '2px',
+            tooltip: 'Border radius for <mark> highlights, for example 2px.',
+            onChange: (val: string) => appearanceValue('markBorderRadius', val)
+        },
+        {
+            id: 'txtHeadingColor',
+            label: I18n.getLanguage() === 'zh' ? '标题颜色' : 'Heading color',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.headingColor || '#569CD6',
+            placeholder: '#569CD6',
+            tooltip: 'Color for all Markdown preview heading levels h1-h6, for example #569CD6.',
+            onChange: (val: string) => appearanceValue('headingColor', val)
+        },
+        {
+            id: 'txtPreviewBackgroundColor',
+            label: I18n.getLanguage() === 'zh' ? '预览背景色' : 'Preview background',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.previewBackgroundColor || '',
+            placeholder: 'follow IDE theme',
+            tooltip: 'Preview background color. Leave empty to follow the IDE theme.',
+            onChange: (val: string) => appearanceValue('previewBackgroundColor', val)
+        },
+        {
+            id: 'txtPreviewTextColor',
+            label: I18n.getLanguage() === 'zh' ? '预览文字颜色' : 'Preview text color',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.previewTextColor || '',
+            placeholder: 'follow IDE theme',
+            tooltip: 'Preview text color. Leave empty to follow the IDE theme.',
+            onChange: (val: string) => appearanceValue('previewTextColor', val)
+        },
+        {
+            id: 'txtEditorFontSize',
+            label: I18n.getLanguage() === 'zh' ? '编辑器字号' : 'Editor font size',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.editorFontSize || '16px',
+            placeholder: '16px',
+            tooltip: 'Font size for the left Markdown editor pane, for example 16px.',
+            onChange: (val: string) => appearanceValue('editorFontSize', val)
+        },
+        {
+            id: 'txtEditorLineHeight',
+            label: I18n.getLanguage() === 'zh' ? '编辑器行高' : 'Editor line height',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.editorLineHeight || '1.8',
+            placeholder: '1.8',
+            tooltip: 'Line height for the left Markdown editor pane, for example 1.8.',
+            onChange: (val: string) => appearanceValue('editorLineHeight', val)
+        },
+        {
+            id: 'txtPreviewFontSize',
+            label: I18n.getLanguage() === 'zh' ? '预览字号' : 'Preview font size',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.previewFontSize || '',
+            placeholder: '17px',
+            tooltip: 'Font size for the right Markdown preview pane, for example 17px.',
+            onChange: (val: string) => appearanceValue('previewFontSize', val)
+        },
+        {
+            id: 'txtPreviewLineHeight',
+            label: I18n.getLanguage() === 'zh' ? '预览行高' : 'Preview line height',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.previewLineHeight || '',
+            placeholder: '1.8',
+            tooltip: 'Line height for the right Markdown preview pane, for example 1.8.',
+            onChange: (val: string) => appearanceValue('previewLineHeight', val)
         }
     ];
 }
@@ -2857,9 +3228,18 @@ function initializeSettings() {
 
     // Initialize manager
     mdSettingsManager = new SettingsManager('openSettingsButton', 'settingsPanel', 'settingsCancelButton', settingsDefs);
+    const customize = document.createElement('button');
+    customize.id = 'customizeMdToolbarButton';
+    customize.className = 'toggle-button';
+    const updateLabel = () => { customize.textContent = I18n.getLanguage() === 'zh' ? '自定义工具栏…' : 'Customize toolbar…'; };
+    updateLabel();
+    I18n.onLanguageChange(updateLabel);
+    customize.addEventListener('click', () => { mdSettingsManager?.close(); mdToolbarController?.open(); });
+    $('settingsPanel')!.insertBefore(customize, $('settingsPanel')!.firstChild);
 }
 
 function reorderMdToolbarButtons() {
+    if (mdToolbarController) return;
     if (!toolbarManager) return;
 
     const toolbar = document.getElementById('toolbar');
@@ -2902,6 +3282,27 @@ window.addEventListener('message', (event) => {
     const m = event.data;
 
     switch (m.command) {
+        case 'externalFileChanged':
+            showToast('文件已被其他程序修改；当前编辑内容已保留，请先处理冲突或重新加载。');
+            break;
+        case 'toolbarLayoutUpdated':
+            mdToolbarController?.receive(m.layout, m.revision, !!currentSettings.moveMdButtonsToEnd);
+            updateTextSizeButtonsState();
+            break;
+        case 'toolbarLayoutSaved':
+            mdToolbarController?.saved(m.requestId, m.ok, m.message);
+            updateTextSizeButtonsState();
+            break;
+        case 'webviewError':
+            if (isSaving) {
+                isSaving = false;
+                shouldExitEditMode = false;
+                pendingSavedPreviewHtml = null;
+                setButtonsEnabled(true);
+            }
+            showToast(m.message || '请求被拒绝：输入超出安全限制');
+            break;
+
         case 'initMarkdown':
             const wasPreviewEditMode = isPreviewEditMode;
             const previewEditScrollState = wasPreviewEditMode
@@ -2924,6 +3325,8 @@ window.addEventListener('message', (event) => {
                     preview.contentEditable = 'true';
                     enhancePreviewTablesForEditing();
                     initializePreviewHistory();
+                    previewEditBaselineHtml = getPreviewEditHtml(preview);
+                    previewEditBaselineMarkdown = turndownService.turndown(previewEditBaselineHtml);
                 }
                 restorePreviewEditScroll(previewEditScrollState);
             }
@@ -2939,6 +3342,10 @@ window.addEventListener('message', (event) => {
             applySettings(m.settings, false);
             break;
 
+        case 'setMarkdownTheme':
+            applySettings({ theme: m.theme }, false);
+            break;
+
         case 'saveResult':
             isSaving = false;
             setButtonsEnabled(true);
@@ -2948,8 +3355,14 @@ window.addEventListener('message', (event) => {
                 } else {
                     showToast(I18n.t('toast.saved', 'Saved'));
                 }
-                originalContent = lastSaveContent || currentContent;
-                if (currentContent !== originalContent) scheduleMarkdownAutoSave();
+                originalContent = lastSaveContent;
+                if (isPreviewEditMode && pendingSavedPreviewHtml !== null) {
+                    previewEditBaselineHtml = pendingSavedPreviewHtml;
+                    previewEditBaselineMarkdown = turndownService.turndown(pendingSavedPreviewHtml);
+                    pendingSavedPreviewHtml = null;
+                    const preview = $('markdownPreview');
+                    if (preview && getPreviewEditHtml(preview) !== previewEditBaselineHtml) scheduleMarkdownAutoSave();
+                } else if (currentContent !== originalContent) scheduleMarkdownAutoSave();
                 if (shouldExitEditMode) {
                     if (isPreviewEditMode) {
                         setPreviewEditMode(false);
@@ -2968,7 +3381,8 @@ window.addEventListener('message', (event) => {
                 }
                 shouldExitEditMode = false;
             } else {
-                showToast(I18n.t('toast.errorSaving', 'Error saving'));
+                pendingSavedPreviewHtml = null;
+                showToast(m.error || I18n.t('toast.errorSaving', 'Error saving'));
                 shouldExitEditMode = false;
             }
             break;
@@ -3010,7 +3424,12 @@ function wireButtons() {
     });
 
     // Inject tooltip if variables are present
-    InfoTooltip.inject('toolbar', (window as any).viewImgUri, (window as any).logoSvgUri, 'GitHub Flavored Markdown');
+    const info = InfoTooltip.inject('toolbar', (window as any).viewImgUri, (window as any).logoSvgUri, 'GitHub Flavored Markdown');
+    if (info) info.id = 'mdToolbarInfo';
+    mdToolbarController = new MdToolbarController({
+        context: () => ({ editing: isEditMode, history: isVersionPreviewMode, saving: isSaving, mdEnabled: !!currentSettings.isMdEnabled }),
+        save: (layout, requestId, revision) => vscode.postMessage({ command: 'saveMdToolbarLayout', layout, requestId, revision })
+    });
 
     // Theme manager
     new ThemeManager('toggleBackgroundButton', {
@@ -3056,8 +3475,7 @@ function buildToolbarButtons() {
             label: I18n.t('toolbar.editFile', 'Edit File'),
             tooltip: I18n.t('toolbar.editFileMdTooltip', 'Edit File in Vscode Default Editor'),
             onClick: () => {
-                isPreviewView = !isPreviewView;
-                vscode.postMessage({ command: 'toggleView', isPreviewView });
+                vscode.postMessage({ command: 'toggleView', isPreviewView: false, hasUnsavedChanges: hasUnsavedMarkdownEdits() });
             }
         },
         {
@@ -3742,6 +4160,7 @@ function applyFormat(action: string) {
     pushUndoState(editor);
     switch (action) {
         case 'bold': wrapSelection(editor, '**', '**'); break;
+        case 'highlight': wrapSelection(editor, '<mark>', '</mark>'); break;
         case 'italic': wrapSelection(editor, '*', '*'); break;
         case 'strikethrough': wrapSelection(editor, '~~', '~~'); break;
         case 'inlineCode': wrapSelection(editor, '`', '`'); break;
@@ -4513,10 +4932,19 @@ function wireEditor() {
     editor.addEventListener('blur', flushLivePreviewRender);
 
     editor.addEventListener('scroll', throttledSyncEditorToPreview, { passive: true });
+    editor.addEventListener('scroll', () => reportScrollDiagnostic('editor-scroll'), { passive: true });
 
     if (preview) {
         preview.addEventListener('scroll', throttledSyncPreviewToEditor, { passive: true });
+        preview.addEventListener('scroll', () => reportScrollDiagnostic('preview-scroll'), { passive: true });
     }
+
+    $('content')?.addEventListener('scroll', () => reportScrollDiagnostic('content-scroll'), { passive: true });
+    document.addEventListener('scroll', event => {
+        if (event.target === document || event.target === document.documentElement || event.target === document.body) {
+            reportScrollDiagnostic('document-scroll');
+        }
+    }, { passive: true, capture: true });
 
     window.addEventListener('resize', refreshSyncMetrics);
 
@@ -4624,6 +5052,12 @@ function wireEditor() {
                 editor.selectionStart = editor.selectionEnd = start + insertion.length;
                 onEditorInput();
             }
+            return;
+        }
+
+        if (isMod && e.altKey && e.shiftKey && e.code === 'Digit3') {
+            e.preventDefault();
+            if (editor.selectionStart !== editor.selectionEnd) applyFormat('highlight');
             return;
         }
 
@@ -4885,7 +5319,20 @@ function wirePreviewInteractions() {
 
             // Handle anchor links (same document)
             if (href.startsWith('#')) {
-                // Let the browser handle anchor navigation
+                e.preventDefault();
+                e.stopPropagation();
+                const headings = Array.from(preview.querySelectorAll<HTMLElement>('.md-heading[id]')).map(heading => {
+                    const copy = heading.cloneNode(true) as HTMLElement;
+                    copy.querySelectorAll('.heading-anchor').forEach(node => node.remove());
+                    return { id: heading.id, text: copy.textContent || '' };
+                });
+                const id = resolveHeadingId(href.slice(1), link.textContent || '', headings);
+                const heading = id ? document.getElementById(id) : null;
+                if (heading && preview.contains(heading)) {
+                    heading.scrollIntoView({ block: 'start', behavior: 'smooth' });
+                } else {
+                    showToast('未找到唯一的目录目标，请检查目录链接与标题。');
+                }
                 return;
             }
 

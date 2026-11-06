@@ -1,0 +1,14 @@
+{
+  "name": "xlsx-viewer-markdown-theme",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-theme.mjs",
+    "watch": "node scripts/watch-theme.mjs",
+    "audit": "node scripts/audit-compatibility.mjs"
+  },
+  "dependencies": {
+    "less": "4.2.0"
+  }
+}

@@ -7931,6 +7931,26 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         const message = event.data;
         if (!message || typeof message !== 'object') return;
 
+        if (message.command === 'webviewError') {
+            if (isSaving) {
+                hideLoading();
+                isSaving = false;
+                setButtonsEnabled(true);
+            }
+            showToast(message.message || '请求被拒绝：输入超出安全限制', false, 2500);
+            return;
+        }
+
+        if (message.command === 'saveWarning') {
+            showToast(message.message || '文件已保存，但附加处理失败。', false, 5000);
+            return;
+        }
+
+        if (message.command === 'externalFileChanged') {
+            showToast('文件已被外部修改；请先处理冲突后再保存。', false, 5000);
+            return;
+        }
+
         if (message.command === 'initSettings') {
             consumeIncomingSettingsPayload(message);
             return;
@@ -7976,7 +7996,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                 }
             } else {
                 const isAutosaveResult = !!message.isAutosave;
-                showToast(isAutosaveResult ? I18n.t('toast.autosaveFailed', 'Autosave failed') : I18n.t('toast.errorSaving', 'Error saving'), isAutosaveResult, 1000);
+                showToast(message.error || (isAutosaveResult ? I18n.t('toast.autosaveFailed', 'Autosave failed') : I18n.t('toast.errorSaving', 'Error saving')), false, 5000);
             }
             return;
         }

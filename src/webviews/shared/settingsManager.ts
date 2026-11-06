@@ -6,7 +6,9 @@ export interface SettingDefinition {
     onChange: (value: any) => void;
     defaultValue?: boolean | number;
     tooltip?: string;
-    inputType?: 'checkbox' | 'radio' | 'number';
+    inputType?: 'checkbox' | 'radio' | 'number' | 'text';
+    defaultTextValue?: string;
+    placeholder?: string;
     groupName?: string;
     value?: string;
     className?: string;
@@ -77,14 +79,18 @@ export class SettingsManager {
                 const safeLabel = this.escapeHtml(s.label);
                 const tooltip = s.tooltip && s.tooltip.trim().length > 0 ? s.tooltip : s.label;
                 const safeDescription = this.escapeHtml(tooltip);
-                const inputType = s.inputType === 'radio' ? 'radio' : s.inputType === 'number' ? 'number' : 'checkbox';
+                const inputType = s.inputType === 'radio' ? 'radio' : s.inputType === 'number' ? 'number' : s.inputType === 'text' ? 'text' : 'checkbox';
                 const safeGroupName = this.escapeHtml(s.groupName || '');
                 const safeValue = this.escapeHtml(s.value || '');
                 const safeClassName = this.escapeHtml((s.className || '').trim());
                 const groupAttr = inputType === 'radio' && safeGroupName ? ` name="${safeGroupName}"` : '';
                 const valueAttr = inputType === 'radio' ? ` value="${safeValue}"` : '';
                 const extraClass = safeClassName ? ` ${safeClassName}` : '';
-                if (inputType === 'number') {
+                if (inputType === 'text') {
+                    const textValue = this.escapeHtml(s.defaultTextValue || '');
+                    const placeholder = this.escapeHtml(s.placeholder || '');
+                    html += `<label class="setting-item setting-number-item${extraClass}" for="${safeId}"><span class="setting-copy"><span class="setting-label">${safeLabel}</span><span class="setting-description">${safeDescription}</span></span><input type="text" id="${safeId}" value="${textValue}" placeholder="${placeholder}"/></label>`;
+                } else if (inputType === 'number') {
                     const numberAttrs = ` min="${s.min ?? 0}"${s.max !== undefined ? ` max="${s.max}"` : ''} step="${s.step ?? 1}" value="${typeof s.defaultValue === 'number' ? s.defaultValue : 0}"`;
                     html += `<label class="setting-item setting-number-item${extraClass}" for="${safeId}"><span class="setting-copy"><span class="setting-label">${safeLabel}</span><span class="setting-description">${safeDescription}</span></span><input type="number" id="${safeId}"${numberAttrs}/></label>`;
                 } else {
@@ -154,6 +160,8 @@ export class SettingsManager {
                 el.addEventListener('change', () => {
                     if (setting.inputType === 'number') {
                         setting.onChange(Number(el.value));
+                    } else if (setting.inputType === 'text') {
+                        setting.onChange(el.value);
                     } else if (setting.inputType === 'radio') {
                         if (el.checked) {
                             setting.onChange(el.value);
@@ -229,6 +237,10 @@ export class SettingsManager {
         const content = this.panel.querySelector('.settings-content') as HTMLElement | null;
         if (content) content.scrollTop = 0;
         this.repositionPanel();
+    }
+
+    close() {
+        if (this.panel && !this.panel.classList.contains('hidden')) this.closePanel();
     }
 
     private openPanel() {

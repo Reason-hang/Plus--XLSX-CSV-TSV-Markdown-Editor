@@ -224,6 +224,14 @@ body.preview-edit-mode .markdown-container {
     overflow: hidden !important;
 }
 
+/* Split-edit panes own scrolling while the preview is being redrawn. */
+body.edit-mode #content,
+body.edit-mode .editor-wrapper,
+body.edit-mode .markdown-preview,
+body.edit-mode .markdown-editor {
+    overflow-anchor: none;
+}
+
 
 /* ===== Loading Indicator ===== */
 .loading-indicator {
@@ -652,8 +660,8 @@ body.resizing * {
     outline: none;
     resize: none;
     font-family: var(--font-mono);
-    font-size: var(--md-editor-font-size, 13px);
-    line-height: 1.6;
+    font-size: calc(var(--xlsx-viewer-md-editor-font-size, 16px) * var(--md-font-scale, 1));
+    line-height: var(--xlsx-viewer-md-editor-line-height, 1.8);
     padding: 16px;
     background: var(--bg-color);
     color: var(--text-color);
@@ -670,9 +678,10 @@ body.resizing * {
     padding: 32px;
     overflow-y: auto;
     max-width: 100%;
-    color: var(--text-color);
-    background: var(--bg-color);
-    font-size: var(--md-preview-font-size, 14px);
+    color: var(--xlsx-viewer-md-preview-color, var(--text-color));
+    background: var(--xlsx-viewer-md-preview-background, var(--bg-color));
+    font-size: calc(var(--xlsx-viewer-md-preview-font-size, 14px) * var(--md-font-scale, 1));
+    line-height: var(--xlsx-viewer-md-preview-line-height, 1.5);
 }
 
 .markdown-preview.hidden {
@@ -708,6 +717,11 @@ body.resizing * {
 .markdown-preview h4 { font-size: 1em; font-weight: 600; margin: 24px 0 16px 0; }
 .markdown-preview h5 { font-size: 0.875em; font-weight: 600; margin: 24px 0 16px 0; }
 .markdown-preview h6 { font-size: 0.85em; font-weight: 600; margin: 24px 0 16px 0; color: var(--text-muted); }
+
+.markdown-preview h1, .markdown-preview h2, .markdown-preview h3,
+.markdown-preview h4, .markdown-preview h5, .markdown-preview h6 {
+    color: var(--xlsx-viewer-md-heading-color, #569CD6);
+}
 
 .markdown-preview p {
     margin: 0 0 16px 0;
@@ -1406,10 +1420,11 @@ body.sticky-toolbar-enabled .formatting-toolbar {
 
 /* Marked Text */
 .markdown-preview mark {
-    background-color: var(--warning-bg);
-    color: inherit;
-    padding: 0 2px;
-    border-radius: 2px;
+    background-color: var(--xlsx-viewer-md-mark-background, #FF4E00);
+    color: var(--xlsx-viewer-md-mark-color, inherit);
+    font-weight: var(--xlsx-viewer-md-mark-font-weight, inherit);
+    padding: var(--xlsx-viewer-md-mark-padding, 0 2px);
+    border-radius: var(--xlsx-viewer-md-mark-border-radius, 2px);
 }
 
 /* Abbreviations */
@@ -1653,3 +1668,40 @@ body:not(.show-line-numbers) .markdown-preview .code-line::before {
     pointer-events: none !important;
 }
 
+/* Markdown-only presentation: keep the settings node outside the scrolling items. */
+#toolbar.md-custom-toolbar { overflow: visible; gap: 8px; box-sizing: border-box; align-items: flex-start; }
+.md-toolbar-items { display: flex; align-items: flex-start; gap: 8px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: thin; }
+.md-toolbar-items > .tooltip, #toolbar.md-custom-toolbar > .tooltip { flex: 0 0 auto; }
+#customizeMdToolbarButton { margin-right: 8px; }
+.md-layout-backdrop[hidden] { display: none !important; }
+.md-layout-backdrop { position: fixed; inset: 0; z-index: 100100; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; padding: 12px; box-sizing: border-box; }
+.md-layout-dialog { display: flex; flex-direction: column; width: 760px; max-width: 100%; max-height: calc(100vh - 24px); color: var(--text-color); background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; font-size: 13px; line-height: 1.5; box-sizing: border-box; }
+.md-layout-dialog header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border-color); gap: 8px; }
+.md-layout-dialog h2 { margin: 0; padding: 0; border: 0; font-size: 16px; color: inherit; }
+.md-layout-body { min-height: 0; overflow-y: auto; padding: 10px 16px 16px; container-type: inline-size; }
+.md-layout-dialog details { margin: 0; }
+.md-layout-dialog summary { cursor: pointer; width: fit-content; }
+.md-layout-preview { padding: 8px 0; overflow-x: auto; white-space: nowrap; }
+.md-layout-dialog h3 { font-size: 13px; font-weight: 500; color: inherit; margin: 14px 0 6px; padding: 0; border: 0; }
+.md-layout-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; direction: ltr; }
+.md-layout-card { display: flex; align-items: center; gap: 6px; min-height: 36px; min-width: 0; padding: 4px 7px; box-sizing: border-box; border: 1px solid var(--border-color); border-radius: 4px; background: var(--panel-bg, var(--bg-color)); color: inherit; font: inherit; text-align: left; cursor: grab; }
+.md-layout-name { flex: 1; overflow-wrap: anywhere; }
+.md-layout-card > button { flex: 0 0 24px; width: 24px; height: 26px; border: 0; border-radius: 3px; padding: 0; font: inherit; font-size: 18px; background: transparent; color: inherit; cursor: pointer; }
+.md-layout-card > button:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.2)); }
+button.md-layout-card { cursor: pointer; }
+.md-layout-card[data-drop="before"] { box-shadow: -3px 0 0 var(--vscode-focusBorder, #007acc); }
+.md-layout-card[data-drop="after"] { box-shadow: 3px 0 0 var(--vscode-focusBorder, #007acc); }
+.md-layout-dialog footer { padding: 8px 16px 12px; border-top: 1px solid var(--border-color); }
+.md-layout-dialog footer p { margin: 0 0 6px; font-size: 12px; }
+.md-layout-status:empty { display: none; }
+.md-layout-status { color: var(--vscode-notificationsWarningIcon-foreground, #bf8803); }
+.md-layout-actions { display: flex; align-items: center; gap: 8px; }
+.md-layout-actions > span { flex: 1; }
+.md-layout-actions button, .md-layout-dialog header button { padding: 5px 10px; min-height: 30px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--panel-bg, var(--bg-color)); color: inherit; font: inherit; cursor: pointer; }
+.md-layout-actions [data-apply] { background: var(--vscode-button-background, #007acc); color: var(--vscode-button-foreground, #fff); border-color: transparent; }
+.md-layout-dialog button:disabled { opacity: .55; cursor: default; }
+.md-layout-dialog :focus-visible { outline: 2px solid var(--vscode-focusBorder, #007acc); outline-offset: 2px; }
+@container (max-width: 620px) { .md-layout-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container (max-width: 460px) { .md-layout-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 250px) { .md-layout-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 380px) { .md-layout-dialog header, .md-layout-body, .md-layout-dialog footer { padding-left: 10px; padding-right: 10px; } .md-layout-actions { gap: 4px; } .md-layout-actions button { padding-inline: 7px; } }

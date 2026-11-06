@@ -22,6 +22,7 @@ export class InfoTooltip {
                 this.setupFloatingTooltips();
                 this.isSetup = true;
             }
+            return tooltipDiv;
         }
     }
 
