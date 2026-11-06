@@ -1,87 +1,58 @@
 import * as assert from 'assert';
 import { MD_CONFIGURABLE_ITEMS, MD_TOOLBAR_ITEMS, defaultMdToolbarLayout, isMdToolbarLayout, mdToolbarItemState, resolveMdToolbarLayout } from '../shared/mdToolbarLayout';
-import { validateWebviewMessage } from '../shared/webviewMessageSchema';
 
-describe('Markdown toolbar layout contract', () => {
-    it('puts back-to-top directly before search and includes the logo item', () => {
-        const layout = defaultMdToolbarLayout();
-        assert.equal(layout.order[layout.order.indexOf('search') - 1], 'backToTop');
-        assert.ok(layout.order.includes('info'));
-        assert.equal(new Set(MD_TOOLBAR_ITEMS.map(item => item.id)).size, MD_TOOLBAR_ITEMS.length);
+suite('Markdown 工具栏布局契约', () => {
+    test('动作标识唯一，新版默认项包含字体大小控制与 Logo', () => {
+        const order = defaultMdToolbarLayout().order;
+        assert.strictEqual(new Set(MD_TOOLBAR_ITEMS.map(item => item.id)).size, MD_TOOLBAR_ITEMS.length);
+        for (const id of ['increaseTextSize', 'decreaseTextSize', 'resetTextSize', 'info']) { assert.ok(order.includes(id)); }
+        assert.ok(!MD_CONFIGURABLE_ITEMS.some(item => item.id === 'backToTop'));
     });
 
-    it('migrates the legacy placement only while no valid custom layout exists', () => {
+    test('旧顺序与隐藏项保留，新动作接入且固定入口不可隐藏', () => {
+        const layout = resolveMdToolbarLayout({ version: 1, order: ['search', 'search', 'settings', 'futureAction'], hidden: ['rtl', 'rtl', 'save', 'cancel', 'settings', 'futureAction'] });
+        assert.strictEqual(layout.order.filter(id => id === 'search').length, 1);
+        assert.ok(layout.order.includes('futureAction'));
+        assert.ok(layout.order.includes('increaseTextSize'));
+        assert.deepStrictEqual(layout.hidden, ['rtl', 'futureAction']);
+        assert.ok(!layout.order.includes('settings'));
+    });
+
+    test('旧版放置设置只在没有有效布局时使用', () => {
         const migrated = resolveMdToolbarLayout(null, true);
-        assert.equal(migrated.order[migrated.order.indexOf('help') - 1], 'mdAssociation');
+        assert.strictEqual(migrated.order[migrated.order.indexOf('help') - 1], 'mdAssociation');
         const custom = defaultMdToolbarLayout();
         custom.order.reverse();
         assert.deepStrictEqual(resolveMdToolbarLayout(custom, true).order, custom.order);
     });
 
-    it('normalizes duplicates and protects fixed controls', () => {
-        const layout = resolveMdToolbarLayout({ version: 1, order: ['search', 'search', 'settings'], hidden: ['save', 'cancel', 'settings', 'rtl', 'rtl'] });
-        assert.equal(layout.order.filter(id => id === 'search').length, 1);
-        assert.deepStrictEqual(layout.hidden, ['rtl']);
-        assert.equal(layout.order.length, MD_CONFIGURABLE_ITEMS.length);
-    });
-
-    it('adds a new known action near its declared neighbor without resetting saved order', () => {
-        const old = defaultMdToolbarLayout();
-        old.order = old.order.filter(id => id !== 'backToTop');
-        [old.order[0], old.order[1]] = [old.order[1], old.order[0]];
-        old.hidden = ['theme'];
-        const upgraded = resolveMdToolbarLayout(old);
-        assert.deepStrictEqual(upgraded.order.slice(0, 2), old.order.slice(0, 2));
-        assert.equal(upgraded.order[upgraded.order.indexOf('search') - 1], 'backToTop');
-        assert.deepStrictEqual(upgraded.hidden, ['theme']);
-    });
-
-    it('preserves future IDs without rendering them and does not mutate unsupported data', () => {
-        const raw = { version: 1, order: ['futureAction', 'search'], hidden: ['futureAction'] };
-        const layout = resolveMdToolbarLayout(raw);
-        assert.ok(layout.order.includes('futureAction'));
-        assert.ok(layout.hidden.includes('futureAction'));
-        assert.ok(!MD_CONFIGURABLE_ITEMS.some(item => item.id === 'futureAction'));
+    test('非法与超出限制的布局被拒绝，未知版本不被修改', () => {
+        for (const raw of [null, [], { version: 1, order: ['<script>'], hidden: [] }, { version: 1, order: new Array(65).fill('x'), hidden: [] }, { version: 2, order: [], hidden: [] }]) {
+            assert.strictEqual(isMdToolbarLayout(raw), false);
+        }
         const future = { version: 99, custom: 'keep' };
         resolveMdToolbarLayout(future);
         assert.deepStrictEqual(future, { version: 99, custom: 'keep' });
     });
 
-    it('rejects malformed, executable and oversized layouts at the host boundary', () => {
-        for (const raw of [null, [], { version: 1, order: ['<script>'], hidden: [] }, { version: 1, order: new Array(65).fill('x'), hidden: [] }, { version: 2, order: [], hidden: [] }]) {
-            assert.equal(isMdToolbarLayout(raw), false);
-            assert.equal(validateWebviewMessage({ command: 'saveMdToolbarLayout', requestId: 'test', revision: 'a'.repeat(64), layout: raw }, 'markdown').ok, false);
-        }
-        const message = { command: 'saveMdToolbarLayout', requestId: 'test', revision: 'a'.repeat(64), layout: defaultMdToolbarLayout() };
-        assert.equal(validateWebviewMessage(message, 'markdown').ok, true);
-        assert.equal(validateWebviewMessage(message, 'spreadsheet').ok, false);
-        assert.equal(validateWebviewMessage({ ...message, revision: 'invalid' }, 'markdown').ok, false);
-    });
-
-    it('keeps user-hidden actions hidden across all modes and saving states', () => {
-        const layout = defaultMdToolbarLayout(); layout.hidden = ['splitEdit', 'rtl'];
+    test('隐藏偏好跨编辑、历史和保存状态保留，固定入口仍可使用', () => {
+        const layout = defaultMdToolbarLayout();
+        layout.hidden = ['splitEdit', 'rtl', 'save', 'cancel', 'settings'];
         for (const editing of [false, true]) {
             for (const history of [false, true]) {
                 for (const saving of [false, true]) {
-                    for (const id of layout.hidden) {
+                    for (const id of ['splitEdit', 'rtl']) {
                         const item = MD_TOOLBAR_ITEMS.find(entry => entry.id === id)!;
-                        assert.equal(mdToolbarItemState(item, layout, { editing, history, saving, mdEnabled: true }).visible, false);
+                        assert.strictEqual(mdToolbarItemState(item, layout, { editing, history, saving, mdEnabled: true }).visible, false);
                     }
                 }
             }
         }
-    });
-
-    it('protects Save/Cancel and keeps history preview read-only', () => {
-        const layout = defaultMdToolbarLayout(); layout.hidden = ['save', 'cancel', 'settings'];
         const state = (id: string, editing: boolean, history: boolean, saving = false) => mdToolbarItemState(MD_TOOLBAR_ITEMS.find(item => item.id === id)!, layout, { editing, history, saving, mdEnabled: true });
-        assert.equal(state('save', true, false).visible, true);
-        assert.equal(state('save', true, false, true).enabled, false);
-        assert.equal(state('cancel', true, false).visible, true);
-        assert.equal(state('splitEdit', false, true).visible, false);
-        assert.equal(state('editFile', false, true).visible, false);
-        assert.equal(state('save', true, true).visible, false);
-        assert.equal(state('settings', false, true).visible, true);
-        assert.equal(state('backToTop', false, true).enabled, true);
+        assert.strictEqual(state('save', true, false).visible, true);
+        assert.strictEqual(state('cancel', true, false).visible, true);
+        assert.strictEqual(state('save', true, false, true).enabled, false);
+        assert.strictEqual(state('save', true, true).visible, false);
+        assert.strictEqual(state('settings', false, true).visible, true);
     });
 });

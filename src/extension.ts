@@ -260,6 +260,11 @@ async function applyStoredStylesToXlsxFile(filePath: string, storedStyles: Recor
 export function activate(context: vscode.ExtensionContext) {
     const spreadsheetProvider = new SpreadsheetEditorProvider(context);
     const mdProvider = new MDEditorProvider(context);
+    context.subscriptions.push(mdProvider,
+        vscode.commands.registerCommand('xlsx-viewer.reloadMarkdownTheme', () => mdProvider.reloadMarkdownTheme()),
+        vscode.commands.registerCommand('xlsx-viewer.showMarkdownThemeStatus', () => mdProvider.showMarkdownThemeStatus()),
+        vscode.commands.registerCommand('xlsx-viewer.revealMarkdownThemeFolder', () => mdProvider.revealMarkdownThemeFolder())
+    );
     const styleStorage = new StyleStorageService(context);
     const stylePruneIntervalMs = 24 * 60 * 60 * 1000;
 
@@ -276,7 +281,6 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(new vscode.Disposable(() => {
         clearInterval(stylePruneTimer);
     }));
-    context.subscriptions.push(mdProvider);
 
     context.subscriptions.push(
         vscode.window.registerCustomEditorProvider('xlsxViewer.xlsx', spreadsheetProvider, {
@@ -388,13 +392,6 @@ export function activate(context: vscode.ExtensionContext) {
                 await vscode.commands.executeCommand('vscode.openWith', docUri, 'xlsxViewer.md');
             }
         })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('xlsx-viewer.mdBackToTop', () => mdProvider.backToTop()),
-        vscode.commands.registerCommand('xlsx-viewer.reloadMarkdownTheme', () => mdProvider.reloadMarkdownTheme()),
-        vscode.commands.registerCommand('xlsx-viewer.showMarkdownThemeStatus', () => mdProvider.showMarkdownThemeStatus()),
-        vscode.commands.registerCommand('xlsx-viewer.revealMarkdownThemeFolder', () => mdProvider.revealMarkdownThemeFolder())
     );
 
     context.subscriptions.push(

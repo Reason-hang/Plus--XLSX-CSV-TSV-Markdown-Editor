@@ -5,16 +5,16 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { createHash } from 'crypto';
 import { VERSION_HISTORY_RETENTION_MS, buildGroupedVersionHistoryItems as buildSharedVersionHistoryItems, formatVersionHistoryTimestamp, getVersionHistoryDir, isSafeSnapshotFile } from './shared/versionHistory';
+import { writeBufferFileAtomically, writeFileAtomically } from './shared/atomicFile';
+import { hashBuffer, hashFile } from './shared/fileFingerprint';
+import { assertXlsxRoundTripSupported } from './shared/xlsxRoundTripSafety';
+import { isAllowedExternalUri } from './shared/externalUri';
+import { buildInlineListFormula } from './shared/inlineListFormula';
 import { convertARGBToRGBA, isShadeOfBlack, isShadeOfWhite, loadExcelWorkbook } from './spreadsheet/spreadsheetUtilities';
 import { convertTabularFile, readTabularFile, detectTabularFileType, writeTabularFile, TabularFileType } from './shared/fileConversionService';
 import { StyleStorageService } from './shared/styleStorageService';
-import { isAllowedExternalUri } from './shared/externalUri';
 import { getCellValueForDisplay } from './spreadsheet/cellValue';
-import { writeBufferFileAtomically, writeFileAtomically } from './shared/atomicFile';
-import { hashBuffer, hashFile } from './shared/fileFingerprint';
 import { validateWebviewMessage } from './shared/webviewMessageSchema';
-import { buildInlineListFormula } from './shared/inlineListFormula';
-import { assertXlsxRoundTripSupported } from './shared/xlsxRoundTripSafety';
 
 function borderEditToCssValue(enabled: boolean, style?: string, color?: string): string {
     if (!enabled) return '';
@@ -260,12 +260,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
         let lastKnownFileHash = '';
 
         const assertFileUnchanged = async () => {
-            if (!lastKnownFileHash) {
-                return;
-            }
-            const currentHash = await hashFile(filePath);
-            if (currentHash !== lastKnownFileHash) {
-                throw new Error('文件已被外部修改，请先重新加载后再保存。');
+            if (document.uri.scheme === 'file' && lastKnownFileHash && await hashFile(filePath) !== lastKnownFileHash) {
+                throw new Error('文件已被外部修改，请先处理冲突后再保存。');
             }
         };
 
@@ -289,9 +285,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
         const getHistoryIndexPath = () => path.join(getHistoryDir(), 'index.json');
         const getSnapshotPath = (snapshotFile: string) => {
-            if (!isSafeSnapshotFile(snapshotFile, ['xlsx', 'csv', 'tsv'])) {
-                throw new Error('Invalid version snapshot path');
-            }
+            if (!isSafeSnapshotFile(snapshotFile, ['xlsx', 'csv', 'tsv'])) throw new Error('版本历史快照路径无效。');
             return path.join(getHistoryDir(), snapshotFile);
         };
         const getSnapshotFileType = (snapshotFile: string, fallbackType: TabularFileType): TabularFileType => {
@@ -1025,21 +1019,17 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 }
             }
 
-            // Validate metadata before changing the user file. saveMetadata repeats
-            // the check so direct callers are protected as well.
-            this.styleStorage.assertMetadataWithinLimits({
-                cells: finalCells,
-                merges
-            });
-
+            this.styleStorage.assertMetadataWithinLimits({ cells: finalCells, merges });
             await assertFileUnchanged();
-            await writeTabularFile(document.uri.fsPath, {
-                sheets: [{ name: 'Sheet1', rows }]
-            }, sourceType);
+            await writeTabularFile(document.uri.fsPath, { sheets: [{ name: 'Sheet1', rows }] }, sourceType);
             lastKnownFileHash = await hashFile(filePath);
             lastSaveTime = Date.now();
             const saveWarnings: string[] = [];
-
+            try {
+                await persistVersionSnapshot();
+            } catch (error) {
+                saveWarnings.push(`文件已保存，但版本历史保存失败：${String(error)}`);
+            }
             try {
                 await this.styleStorage.saveMetadata(document.uri, { cells: finalCells, merges });
             } catch (error) {
@@ -1059,9 +1049,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
             try {
                 webview.postMessage({ command: 'saveResult', ok: true, isAutosave });
-                for (const message of saveWarnings) {
-                    webview.postMessage({ command: 'saveWarning', message });
-                }
+                for (const message of saveWarnings) webview.postMessage({ command: 'saveWarning', message });
             } catch {
                 // ignore
             }
@@ -1095,30 +1083,24 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             });
 
             const storedStyles = (await this.styleStorage.getStyles(document.uri)) ?? {};
-            let styleApplyError: string | null = null;
             if (Object.keys(storedStyles).length > 0) {
-                try {
-                    const workbook = new Excel.Workbook();
-                    await loadExcelWorkbook(targetPath, workbook);
-                    const worksheet = workbook.worksheets[0];
-                    if (!worksheet) {
-                        throw new Error('Converted workbook has no worksheet');
-                    }
+                const workbook = new Excel.Workbook();
+                await loadExcelWorkbook(targetPath, workbook);
+                const worksheet = workbook.worksheets[0];
+                if (worksheet) {
                     applyStoredStylesToWorksheet(worksheet, storedStyles);
-                    await writeFileAtomically(targetPath, temporaryPath => workbook.xlsx.writeFile(temporaryPath));
-                    await this.styleStorage.clearStyles(document.uri);
-                } catch (error) {
-                    styleApplyError = String(error);
+                    try {
+                        await writeFileAtomically(targetPath, temporaryPath => workbook.xlsx.writeFile(temporaryPath));
+                    } catch (error) {
+                        throw new Error(`XLSX 已创建，但写入样式失败；原始样式数据仍保留：${String(error)}`);
+                    }
                 }
             }
 
+            await this.styleStorage.clearStyles(document.uri);
             await this.styleStorage.clearPreferredViewMode(document.uri);
             hasActiveTemporaryStyles = false;
             shouldOpenDelimitedInStyledMode = false;
-
-            if (styleApplyError) {
-                vscode.window.showWarningMessage(`文件已转换为 XLSX，但样式未能应用：${styleApplyError}`);
-            }
 
             await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
             await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(targetPath), 'xlsxViewer.xlsx');
@@ -1132,13 +1114,13 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             try {
                 const raw = await fs.promises.readFile(getHistoryIndexPath(), 'utf8');
                 const parsed = JSON.parse(raw);
-                if (!Array.isArray(parsed)) {
-                    return [];
+                if (!Array.isArray(parsed) || !parsed.every(entry => entry && typeof entry.id === 'string' && Number.isFinite(entry.timestamp) && isSafeSnapshotFile(entry.snapshotFile, ['xlsx', 'csv', 'tsv']))) {
+                    throw new Error('表格版本历史索引无效，未覆盖原始数据。');
                 }
-                return parsed.filter((entry: VersionHistoryEntry) =>
-                    entry && isSafeSnapshotFile(entry.snapshotFile, ['xlsx', 'csv', 'tsv'])) as VersionHistoryEntry[];
-            } catch {
-                return [];
+                return parsed as VersionHistoryEntry[];
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+                throw error;
             }
         };
 
@@ -1151,6 +1133,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             const now = Date.now();
             const source = entries ?? await loadHistory();
             const kept: VersionHistoryEntry[] = [];
+            const expiredPaths: string[] = [];
 
             for (const entry of source) {
                 if (!entry || typeof entry.snapshotFile !== 'string') {
@@ -1161,24 +1144,19 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 const snapshotPath = getSnapshotPath(entry.snapshotFile);
 
                 if (expired) {
-                    try {
-                        await fs.promises.unlink(snapshotPath);
-                    } catch {
-                        // ignore
-                    }
+                    expiredPaths.push(snapshotPath);
                     continue;
                 }
 
-                try {
-                    await fs.promises.access(snapshotPath, fs.constants.F_OK);
-                    kept.push(entry);
-                } catch {
-                    // ignore missing snapshot files
-                }
+                await fs.promises.access(snapshotPath, fs.constants.F_OK);
+                kept.push(entry);
             }
 
             if (kept.length !== source.length) {
                 await saveHistory(kept);
+                for (const expiredPath of expiredPaths) {
+                    await fs.promises.unlink(expiredPath).catch(() => undefined);
+                }
             }
 
             return kept;
@@ -1199,7 +1177,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 const snapshotFile = `${id}.${currentFileType}`;
 
                 await ensureHistoryDir();
-                await writeFileAtomically(getSnapshotPath(snapshotFile), temporaryPath => fs.promises.writeFile(temporaryPath, snapshotBytes));
+                await writeBufferFileAtomically(getSnapshotPath(snapshotFile), snapshotBytes);
 
                 history.push({
                     id,
@@ -1212,8 +1190,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 });
 
                 await saveHistory(history);
-            } catch {
-                // ignore history snapshot errors
+            } catch (error) {
+                console.error('Failed to save spreadsheet version history:', error);
+                throw error;
             }
         };
 
@@ -1223,9 +1202,13 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             stickyToolbar: boolean;
             stickyHeader: boolean;
             autoSave: boolean;
+            autoSaveDelay: number;
+            autoSaveDelayOverride: number;
+            editorAutoSaveDelay: number;
             autoSaveMode: 'all' | 'controlsOnly';
             showManualSavePopup: boolean;
             showPopups: boolean;
+            showScrollToTop: boolean;
             allowInteractiveControlsOutsideEditMode: boolean;
             hyperlinkPreview: boolean;
             spaciousCells: boolean;
@@ -1267,9 +1250,24 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             return associations[directPattern] === associationConfig.viewType || associations[recursivePattern] === associationConfig.viewType;
         };
 
+        const getAutoSaveDelaySettings = (fileType: TabularFileType) => {
+            const cfg = vscode.workspace.getConfiguration('xlsxViewer');
+            const filesCfg = vscode.workspace.getConfiguration('files');
+            const storedOverride = this.context.globalState.get<number>(`autoSaveDelayOverride.${fileType}`);
+            const legacyOverride = cfg.get<number>('autoSaveDelay', 0);
+            const override = Math.max(0, Math.min(30000, storedOverride ?? legacyOverride));
+            const editorDelay = Math.max(0, filesCfg.get<number>('autoSaveDelay', 1000));
+            return {
+                autoSaveDelayOverride: override,
+                editorAutoSaveDelay: editorDelay,
+                autoSaveDelay: override > 0 ? override : editorDelay
+            };
+        };
+
         const getStyledSettings = (): PersistedSpreadsheetSettings => {
             const cfg = vscode.workspace.getConfiguration('xlsxViewer');
             const globalCfg = vscode.workspace.getConfiguration('workbench');
+            const autoSaveDelaySettings = getAutoSaveDelaySettings('xlsx');
             const associations: any = globalCfg.get('editorAssociations');
             const autoSaveModeSetting = cfg.get<string>('xlsx.autoSaveMode', 'all');
             return {
@@ -1277,9 +1275,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 stickyToolbar: cfg.get('xlsx.stickyToolbar', true),
                 stickyHeader: cfg.get('xlsx.stickyHeader', false),
                 autoSave: cfg.get('xlsx.autoSave', false),
+                ...autoSaveDelaySettings,
                 autoSaveMode: autoSaveModeSetting === 'controlsOnly' ? 'controlsOnly' : 'all',
                 showManualSavePopup: cfg.get('xlsx.showManualSavePopup', true),
                 showPopups: cfg.get('showPopups', true),
+                showScrollToTop: cfg.get('xlsx.showScrollToTop', cfg.get('showScrollToTop', true)),
                 allowInteractiveControlsOutsideEditMode: cfg.get('xlsx.allowInteractiveControlsOutsideEditMode', true),
                 hyperlinkPreview: cfg.get('xlsx.hyperlinkPreview', true),
                 spaciousCells: cfg.get('xlsx.spaciousCells', false),
@@ -1292,6 +1292,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
         const getPlainSettings = (fileType: TabularFileType): PersistedSpreadsheetSettings => {
             const cfg = vscode.workspace.getConfiguration('xlsxViewer');
             const globalCfg = vscode.workspace.getConfiguration('workbench');
+            const autoSaveDelaySettings = getAutoSaveDelaySettings(fileType);
             const associations: any = globalCfg.get('editorAssociations');
 
             if (fileType === 'csv' || fileType === 'tsv') {
@@ -1299,10 +1300,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     firstRowIsHeader: cfg.get(`${fileType}.firstRowIsHeader`, true),
                     stickyToolbar: cfg.get(`${fileType}.stickyToolbar`, true),
                     stickyHeader: cfg.get(`${fileType}.stickyHeader`, false),
-                    autoSave: cfg.get(`${fileType}.autoSave`, true),
+                    autoSave: cfg.get(`${fileType}.autoSave`, false),
+                    ...autoSaveDelaySettings,
                     autoSaveMode: 'all',
                     showManualSavePopup: false,
                     showPopups: cfg.get('showPopups', true),
+                    showScrollToTop: cfg.get(`${fileType}.showScrollToTop`, cfg.get('showScrollToTop', true)),
                     allowInteractiveControlsOutsideEditMode: true,
                     hyperlinkPreview: true,
                     spaciousCells: cfg.get(`${fileType}.spaciousCells`, false),
@@ -1317,10 +1320,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 firstRowIsHeader: cfg.get('xlsx.firstRowIsHeader', true),
                 stickyToolbar: cfg.get('xlsx.stickyToolbar', true),
                 stickyHeader: cfg.get('xlsx.stickyHeader', false),
-                autoSave: cfg.get('xlsx.autoSave', true),
+                autoSave: cfg.get('xlsx.autoSave', false),
+                ...autoSaveDelaySettings,
                 autoSaveMode: 'all',
                 showManualSavePopup: false,
                 showPopups: cfg.get('showPopups', true),
+                showScrollToTop: cfg.get('xlsx.showScrollToTop', cfg.get('showScrollToTop', true)),
                 allowInteractiveControlsOutsideEditMode: cfg.get('xlsx.allowInteractiveControlsOutsideEditMode', true),
                 hyperlinkPreview: cfg.get('xlsx.hyperlinkPreview', true),
                 spaciousCells: cfg.get('xlsx.spaciousCells', false),
@@ -1383,9 +1388,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     mergedCells: ws.data.mergedCells,
                     rowHeights: ws.data.rows.map((row: any) => row.height || 21)
                 }));
+                const initialRows = (worksheetsData[0]?.data?.rows || []).slice(0, 100);
                 webview.postMessage({
                     command: 'initVirtualTable',
                     worksheets: worksheetsMeta,
+                    initialRows,
                     rowHeaderWidth,
                     fileType: currentFileType,
                     isPlainView: currentIsPlainView,
@@ -1535,7 +1542,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
             // Start compact and let the webview grow row header width only when needed for visible rows.
             rowHeaderWidth = 40;
-            if (path.resolve(sourcePath) === path.resolve(filePath)) {
+            if (document.uri.scheme === 'file' && path.resolve(sourcePath) === path.resolve(filePath)) {
                 lastKnownFileHash = await hashFile(filePath);
             }
         };
@@ -1544,27 +1551,18 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
         webview.onDidReceiveMessage(async message => {
             const validation = validateWebviewMessage(message, 'spreadsheet');
             if (!validation.ok) {
-                console.warn(`[Spreadsheet Webview] ${validation.errorCode}: ${validation.message}`);
-                void webview.postMessage({
-                    command: 'webviewError',
-                    errorCode: validation.errorCode,
-                    message: validation.message
-                });
+                void webview.postMessage({ command: 'webviewError', errorCode: validation.errorCode, message: validation.message });
                 return;
             }
             if (message?.command === 'webviewReady') {
                 isWebviewReady = true;
-                trySendSettings();
-                trySendInit();
                 try {
                     await persistVersionSnapshot();
-                } catch (historyError) {
-                    console.error('Failed to initialize spreadsheet version history:', historyError);
-                    webview.postMessage({
-                        command: 'versionHistoryError',
-                        message: '表格已打开，但版本历史暂时不可用。'
-                    });
+                } catch (error) {
+                    webview.postMessage({ command: 'versionHistoryError', message: `版本历史初始化失败：${String(error)}` });
                 }
+                trySendSettings();
+                trySendInit();
                 // Send current theme info to webview
                 try {
                     webview.postMessage({ type: 'setTheme', kind: vscode.window.activeColorTheme.kind });
@@ -1621,19 +1619,40 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 return;
             }
 
+            if (message?.command === 'requestPaste') {
+                try {
+                    const text = await vscode.env.clipboard.readText();
+                    webview.postMessage({
+                        command: 'pasteFromClipboard',
+                        text: text || ''
+                    });
+                } catch (err) {
+                    console.error('Failed to read clipboard from extension host:', err);
+                }
+                return;
+            }
+
             if (message?.command === 'cancelVersionPreview') {
                 if (previewVersionId) {
-                    previewVersionId = null;
-                    previewVersionTimestamp = null;
-                    restoredVersionId = null;
-                    await loadWorkbookPayload(filePath, currentFileType);
-                    trySendInit();
-                    webview.postMessage({ command: 'versionPreviewCancelledXlsx' });
+                    try {
+                        await loadWorkbookPayload(filePath, currentFileType);
+                        previewVersionId = null;
+                        previewVersionTimestamp = null;
+                        restoredVersionId = null;
+                        trySendInit();
+                        webview.postMessage({ command: 'versionPreviewCancelledXlsx' });
+                    } catch (error) {
+                        webview.postMessage({ command: 'versionHistoryError', message: `退出历史预览失败：${String(error)}` });
+                    }
                 }
                 return;
             }
 
             if (message?.command === 'restoreVersion') {
+                if (isSaving) {
+                    webview.postMessage({ command: 'versionHistoryError', message: '另一次保存仍在进行，请稍后重试。' });
+                    return;
+                }
                 try {
                     isSaving = true;
                     const versionId = typeof message.versionId === 'string' ? message.versionId : '';
@@ -1663,9 +1682,18 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     previewVersionId = null;
                     previewVersionTimestamp = null;
                     restoredVersionId = entry.id;
-                    await loadWorkbookPayload(filePath, currentFileType);
-                    trySendInit();
-                    await persistVersionSnapshot();
+                    try {
+                        await loadWorkbookPayload(filePath, currentFileType);
+                        trySendInit();
+                    } catch (error) {
+                        requiresReopenAfterSave = true;
+                        webview.postMessage({ command: 'saveWarning', message: `文件已恢复，但界面刷新失败；请重新打开文件：${String(error)}` });
+                    }
+                    try {
+                        await persistVersionSnapshot();
+                    } catch (error) {
+                        webview.postMessage({ command: 'saveWarning', message: `文件已恢复，但版本历史保存失败：${String(error)}` });
+                    }
 
                     webview.postMessage({
                         command: 'versionRestoredXlsx',
@@ -1694,6 +1722,13 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
                     if (typeof s.showPopups === 'boolean') {
                         await cfg.update('showPopups', !!s.showPopups, vscode.ConfigurationTarget.Global);
+                    }
+                    if (typeof s.showScrollToTop === 'boolean') {
+                        await cfg.update('showScrollToTop', !!s.showScrollToTop, vscode.ConfigurationTarget.Global);
+                    }
+                    if (typeof s.autoSaveDelayOverride === 'number') {
+                        const override = Math.max(0, Math.min(30000, Math.round(s.autoSaveDelayOverride)));
+                        await this.context.globalState.update(`autoSaveDelayOverride.${currentFileType}`, override);
                     }
 
                     if (scope === 'plain') {
@@ -1725,6 +1760,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                         await cfg.update('xlsx.mergeWarningEnabled', !!s.mergeWarningEnabled, vscode.ConfigurationTarget.Global);
                         await cfg.update('xlsx.textWrap', !!s.textWrap, vscode.ConfigurationTarget.Global);
                     }
+                    trySendSettings();
                 } catch (err) {
                     console.error('Failed to persist XLSX settings:', err);
                 }
@@ -1834,7 +1870,6 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                             method: 'POST',
                             headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) }
                         }, (res: any) => resolve((res.statusCode ?? 500) < 400));
-                        req.setTimeout(10000, () => req.destroy(new Error('Feedback request timed out')));
                         req.on('error', () => resolve(false));
                         req.write(body);
                         req.end();
@@ -1930,11 +1965,13 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             }
 
             if (message?.command === 'saveXlsxEdits') {
+                if (isSaving) {
+                    webview.postMessage({ command: 'saveResult', ok: false, isAutosave: !!message.isAutosave, error: '另一次保存仍在进行，请稍后重试。' });
+                    return;
+                }
                 try {
                     isSaving = true;
-                    if (requiresReopenAfterSave) {
-                        throw new Error('上次保存后的界面刷新失败，请重新打开文件后再编辑。');
-                    }
+                    if (requiresReopenAfterSave) throw new Error('上次保存后刷新失败，请重新打开文件再编辑。');
                     if (previewVersionId) {
                         webview.postMessage({ command: 'saveResult', ok: false, error: 'Preview mode is read-only' });
                         return;
@@ -2426,11 +2463,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     try {
                         await persistVersionSnapshot();
                     } catch (error) {
-                        saveWarnings.push(`文件已保存，但历史快照失败：${String(error)}`);
+                        saveWarnings.push(`文件已保存，但版本历史保存失败：${String(error)}`);
                     }
                     previewVersionId = null;
                     previewVersionTimestamp = null;
 
+                    try {
                     if (operations.length > 0) {
                         const requiresFullRefresh = operations.some((op: any) => {
                             const type = typeof op?.type === 'string' ? op.type : '';
@@ -2438,42 +2476,22 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                         });
 
                         // Keep insert-control autosave smooth by avoiding a full webview re-init.
-                        try {
-                            await loadWorkbookPayload();
-                            if (requiresFullRefresh) {
-                                trySendInit();
-                            }
-                        } catch (error) {
-                            requiresReopenAfterSave = true;
-                            saveWarnings.push(`文件已保存，但界面刷新失败。请重新打开文件后继续编辑：${String(error)}`);
+                        await loadWorkbookPayload();
+                        if (requiresFullRefresh) {
+                            trySendInit();
                         }
                     } else {
                         // For pure text/style edits, update worksheetsData internally but don't force a full webview re-render
-                        try {
-                            await loadWorkbookPayload();
-                        } catch (error) {
-                            requiresReopenAfterSave = true;
-                            saveWarnings.push(`文件已保存，但界面刷新失败。请重新打开文件后继续编辑：${String(error)}`);
-                        }
+                        await loadWorkbookPayload();
+                    }
+                    } catch (error) {
+                        requiresReopenAfterSave = true;
+                        saveWarnings.push(`文件已保存，但界面刷新失败。请重新打开文件后继续编辑：${String(error)}`);
                     }
                     try { webview.postMessage({ command: 'saveResult', ok: true, isAutosave }); } catch { }
-                    for (const message of saveWarnings) {
-                        try { webview.postMessage({ command: 'saveWarning', message }); } catch { }
-                    }
+                    for (const message of saveWarnings) webview.postMessage({ command: 'saveWarning', message });
                 } catch (err) {
-                    const error = err instanceof Error ? err.message : String(err);
-                    const errorCode = err && typeof err === 'object' && 'code' in err
-                        ? String((err as { code?: unknown }).code || '')
-                        : undefined;
-                    try {
-                        webview.postMessage({
-                            command: 'saveResult',
-                            ok: false,
-                            error,
-                            errorCode: errorCode || undefined,
-                            isAutosave: !!message?.isAutosave
-                        });
-                    } catch { }
+                    try { webview.postMessage({ command: 'saveResult', ok: false, error: String(err), isAutosave: !!message?.isAutosave }); } catch { }
                 } finally {
                     isSaving = false;
                 }
@@ -2482,7 +2500,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
         // Forward settings changes made outside the webview
         const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('xlsxViewer.xlsx') || e.affectsConfiguration('xlsxViewer') || e.affectsConfiguration('workbench.editorAssociations')) {
+            if (e.affectsConfiguration('xlsxViewer.xlsx') || e.affectsConfiguration('xlsxViewer') || e.affectsConfiguration('workbench.editorAssociations') || e.affectsConfiguration('files.autoSave') || e.affectsConfiguration('files.autoSaveDelay')) {
                 try {
                     const persisted = getPersistedSettings();
                     webview.postMessage({ command: 'settingsUpdated', ...persisted });
@@ -2501,11 +2519,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 return;
             }
             try {
-                if (await hashFile(filePath) !== lastKnownFileHash) {
+                if (document.uri.scheme === 'file' && await hashFile(filePath) !== lastKnownFileHash) {
                     webview.postMessage({ command: 'externalFileChanged' });
                 }
             } catch {
-                // The save path will independently verify the file fingerprint.
+                // The save path checks the fingerprint independently.
             }
         });
         webviewPanel.onDidDispose(() => {
@@ -3388,3 +3406,5 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
 
 }
+
+

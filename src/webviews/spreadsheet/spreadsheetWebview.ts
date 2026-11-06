@@ -7,7 +7,7 @@ import { ToolbarManager } from '../shared/toolbarManager';
 import { applyToolbarLayout } from '../shared/toolbarLayout';
 import { Utils } from '../shared/utils';
 import { Icons } from '../shared/icons';
-import { vscode, VirtualScrollConfig, debounce } from '../shared/common';
+import { vscode, VirtualScrollConfig, debounce, throttleRAF } from '../shared/common';
 import { VirtualLoader } from '../shared/virtualLoader';
 import { InfoTooltip } from '../shared/infoTooltip';
 import { detectIsRTL } from '../shared/rtlUtils';
@@ -71,7 +71,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
     I18n.init();
 
     // ===== Virtual Scrolling Configuration =====
-    const { ROW_HEIGHT, BUFFER_ROWS, CHUNK_SIZE } = VirtualScrollConfig;
+    const { ROW_HEIGHT, BUFFER_ROWS, CHUNK_SIZE, PREFETCH_ROWS } = VirtualScrollConfig;
     const textColorIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M8.5 16h7"/><path d="M12 4l4 12"/><path d="M12 4L8 16"/></svg>';
     const bgColorIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l8 8-6 6-8-8z"/><path d="M2 20h20"/></svg>';
 
@@ -91,6 +91,8 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
     let rowOffsetPrefixVersion = -1;
     let rowCache = new Map<number, any>();
     const virtualLoader = new VirtualLoader<any[]>('getRows');
+    const inFlightRequests = new Set<string>();
+    let lastScrollTop = 0;
     const MIN_ROW_HEADER_WIDTH = 40;
     let currentRowHeaderWidth = MIN_ROW_HEADER_WIDTH;
     let currentVisibleStart = 0;
@@ -159,7 +161,8 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
 
     const defaultPlainViewSettings: XlsxViewSettings = {
         ...defaultXlsxViewSettings,
-        autoSave: true,
+        autoSave: false,
+        autoSaveDelay: 1000,
         autoSaveMode: 'all',
         showManualSavePopup: false
     };
@@ -1208,9 +1211,13 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         return Math.min(Math.max(low, 0), Math.max(totalRows - 1, 0));
     }
 
-    function rerenderCurrentSheetFromLocalState() {
+    function rerenderCurrentSheetFromLocalState(preservedScrollTop?: number, preservedScrollLeft?: number) {
         const container = document.getElementById('tableContainer');
         if (!container) return;
+
+        const scrollTarget = getTableContainer();
+        const savedScrollTop = typeof preservedScrollTop === 'number' ? preservedScrollTop : (scrollTarget ? scrollTarget.scrollTop : 0);
+        const savedScrollLeft = typeof preservedScrollLeft === 'number' ? preservedScrollLeft : (scrollTarget ? scrollTarget.scrollLeft : 0);
 
         currentVisibleStart = 0;
         currentVisibleEnd = 0;
@@ -1228,6 +1235,13 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                 scrollTarget: '#content',
                 onLayoutApplied: initializeVirtualScrolling
             });
+        }
+
+        const restoredTarget = getTableContainer();
+        if (restoredTarget && (savedScrollTop > 0 || savedScrollLeft > 0)) {
+            restoredTarget.scrollTop = savedScrollTop;
+            restoredTarget.scrollLeft = savedScrollLeft;
+            void updateVisibleRows();
         }
     }
 
@@ -1858,22 +1872,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         });
         appendAction(I18n.t('context.paste', 'Paste'), async () => {
             hideHeaderContextMenu();
-            if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
-                try {
-                    const text = await navigator.clipboard.readText();
-                    pasteTextAtSelection(text);
-                } catch (err) {
-                    const text = prompt(I18n.t('context.pastePrompt', 'Paste content:'));
-                    if (text !== null) {
-                        pasteTextAtSelection(text);
-                    }
-                }
-            } else {
-                const text = prompt(I18n.t('context.pastePrompt', 'Paste content:'));
-                if (text !== null) {
-                    pasteTextAtSelection(text);
-                }
-            }
+            await triggerPaste();
         });
 
         const isWrapped = cell.style.whiteSpace === 'pre-wrap';
@@ -4592,7 +4591,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                 return;
             }
             saveEdits(false, true);
-        }, 1100);
+        }, Math.max(0, Number.isFinite(Number(currentSettings.autoSaveDelay)) ? Number(currentSettings.autoSaveDelay) : 1000));
     }
 
     // ===== Virtual Scrolling Core =====
@@ -5011,21 +5010,68 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         ensureHeaderVisible();
         reapplySelection();
         applyFindHighlightsInVisibleCells();
-        syncColumnWidthsToCurrentMode();
         if (isEditMode) {
             captureOriginalCellValues();
         }
         isRendering = false;
     }
 
+    function renderCachedRange(start: number, end: number) {
+        const cachedRows: any[] = [];
+        for (let i = start; i < end; i++) {
+            cachedRows.push(rowCache.get(i) || { cells: [], rowNumber: i + 1 });
+        }
+        renderVirtualRows(start, end, cachedRows, false);
+    }
+
+    function prefetchRange(start: number, end: number) {
+        if (start >= end) return;
+        const clampedStart = Math.max(0, start);
+        const clampedEnd = Math.min(totalRows, end);
+        if (clampedStart >= clampedEnd) return;
+
+        const reqKey = `${clampedStart}-${clampedEnd}`;
+        if (inFlightRequests.has(reqKey)) return;
+
+        let needsFetch = false;
+        for (let i = clampedStart; i < clampedEnd; i++) {
+            if (!rowCache.has(i)) {
+                needsFetch = true;
+                break;
+            }
+        }
+        if (!needsFetch) return;
+
+        inFlightRequests.add(reqKey);
+        requestRows(clampedStart, clampedEnd, 15000).then((rows) => {
+            inFlightRequests.delete(reqKey);
+            if (Array.isArray(rows) && rows.length > 0) {
+                rows.forEach((row, i) => {
+                    rowCache.set(clampedStart + i, row);
+                });
+                // If user is currently viewing this range, refresh the view
+                if (currentVisibleStart >= 0 && currentVisibleEnd > currentVisibleStart) {
+                    const overlap = Math.max(currentVisibleStart, clampedStart) < Math.min(currentVisibleEnd, clampedEnd);
+                    if (overlap) {
+                        renderCachedRange(currentVisibleStart, currentVisibleEnd);
+                    }
+                }
+            }
+        }).catch(() => {
+            inFlightRequests.delete(reqKey);
+        });
+    }
+
     async function updateVisibleRows() {
         if (isRendering) return;
 
-        const container = getTableContainer();
+        const container = activeScrollContainer || getTableContainer();
         if (!container || totalRows === 0) return;
 
         const scrollTop = container.scrollTop;
         const clientHeight = container.clientHeight;
+        const isScrollingDown = scrollTop >= lastScrollTop;
+        lastScrollTop = scrollTop;
 
         const firstVisibleRow = findRowIndexByOffset(scrollTop);
         const lastVisibleRow = Math.min(totalRows, findRowIndexByOffset(scrollTop + clientHeight) + 1);
@@ -5051,16 +5097,28 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
             chunkEnd = totalRows;
         }
 
-        // Skip if we're already showing these rows (with some tolerance)
-        // BUT only if we don't need to fetch row 0
-        const needsRowZeroFetch = !!currentSettings.firstRowIsHeader && !rowCache.has(0);
-        if (chunkStart === currentVisibleStart && chunkEnd === currentVisibleEnd && !needsRowZeroFetch) {
-            return;
+        // Proactive background pre-fetching in scroll direction so upcoming rows are already in rowCache
+        if (isScrollingDown) {
+            const nextPrefetchStart = chunkEnd;
+            const nextPrefetchEnd = Math.min(totalRows, nextPrefetchStart + CHUNK_SIZE);
+            if (nextPrefetchStart < totalRows && (lastVisibleRow + (PREFETCH_ROWS || 40) >= chunkEnd)) {
+                prefetchRange(nextPrefetchStart, nextPrefetchEnd);
+            }
+        } else {
+            const prevPrefetchEnd = chunkStart;
+            const prevPrefetchStart = Math.max(0, prevPrefetchEnd - CHUNK_SIZE);
+            if (prevPrefetchEnd > 0 && (firstVisibleRow - (PREFETCH_ROWS || 40) <= chunkStart)) {
+                prefetchRange(prevPrefetchStart, prevPrefetchEnd);
+            }
         }
 
-        // Check if current range still covers what we need
-        if (currentVisibleStart <= bufferedStart && currentVisibleEnd >= bufferedEnd && !needsRowZeroFetch) {
-            return; // Current render still covers visible area
+        const needsRowZeroFetch = !!currentSettings.firstRowIsHeader && !rowCache.has(0);
+
+        // Check if current range still covers what we need (with hysteresis)
+        if (currentVisibleStart >= 0 && currentVisibleEnd > currentVisibleStart && !needsRowZeroFetch) {
+            if (currentVisibleStart <= bufferedStart && currentVisibleEnd >= bufferedEnd) {
+                return; // Current render still covers visible area
+            }
         }
 
         const activeRows = getActiveRowsSnapshot();
@@ -5097,54 +5155,100 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
             return;
         }
 
-        if (needsFetch && !isRequestingRows) {
+        if (needsFetch) {
             currentVisibleStart = chunkStart;
             currentVisibleEnd = chunkEnd;
 
-            isRequestingRows = true;
+            // Immediately render cached/placeholder rows so table stays populated during rapid scrolling
+            renderCachedRange(chunkStart, chunkEnd);
 
-            try {
-                // Fetch row 0 first if needed
-                if (needsRowZeroFetch) {
-                    const zeroRowResult = await requestRows(0, 1);
-                    if (zeroRowResult && zeroRowResult[0]) {
-                        rowCache.set(0, zeroRowResult[0]);
+            const reqKey = `${chunkStart}-${chunkEnd}`;
+            if (!inFlightRequests.has(reqKey)) {
+                inFlightRequests.add(reqKey);
+
+                (async () => {
+                    try {
+                        // Fetch row 0 first if needed
+                        if (needsRowZeroFetch) {
+                            const zeroRowResult = await requestRows(0, 1);
+                            if (zeroRowResult && zeroRowResult[0]) {
+                                rowCache.set(0, zeroRowResult[0]);
+                            }
+                        }
+
+                        if (needsMainFetch) {
+                            const rows = await requestRows(chunkStart, chunkEnd);
+                            if (Array.isArray(rows) && rows.length > 0) {
+                                rows.forEach((row, i) => {
+                                    rowCache.set(chunkStart + i, row);
+                                });
+                            }
+                        }
+
+                        // If user is still in this visible range, update with fetched rows
+                        if (currentVisibleStart === chunkStart && currentVisibleEnd === chunkEnd) {
+                            renderCachedRange(chunkStart, chunkEnd);
+                        }
+                    } finally {
+                        inFlightRequests.delete(reqKey);
                     }
-                }
-
-                let rows: any[] = [];
-                if (needsMainFetch) {
-                    rows = await requestRows(chunkStart, chunkEnd);
-                } else {
-                    // If we only needed row 0, we can construct the chunk rows from cache
-                    for (let i = chunkStart; i < chunkEnd; i++) {
-                        rows.push(rowCache.get(i) || { cells: [], rowNumber: i + 1 });
-                    }
-                }
-
-                if (rows && rows.length > 0) {
-                    currentVisibleStart = chunkStart;
-                    currentVisibleEnd = chunkStart + rows.length;
-                    renderVirtualRows(chunkStart, chunkStart + rows.length, rows);
-                }
-            } finally {
-                isRequestingRows = false;
+                })();
             }
-        } else if (!needsFetch) {
+        } else {
             currentVisibleStart = chunkStart;
             currentVisibleEnd = chunkEnd;
-
-            const cachedRows: any[] = [];
-            for (let i = chunkStart; i < chunkEnd; i++) {
-                cachedRows.push(rowCache.get(i) || { cells: [], rowNumber: i + 1 });
-            }
-            renderVirtualRows(chunkStart, chunkEnd, cachedRows);
+            renderCachedRange(chunkStart, chunkEnd);
         }
     }
 
-    const onScroll = debounce(() => {
+    const onScroll = throttleRAF(() => {
         updateVisibleRows();
-    }, 16);
+        updateScrollToTopVisibility();
+    });
+
+    function updateScrollToTopVisibility() {
+        const btn = document.getElementById('scrollToTopBtn');
+        if (!btn) return;
+        if (currentSettings.showScrollToTop === false) {
+            if (btn.classList.contains('visible')) {
+                btn.classList.remove('visible');
+            }
+            return;
+        }
+        const container = activeScrollContainer || getTableContainer();
+        const scrollTop = container ? container.scrollTop : 0;
+        const shouldBeVisible = scrollTop > 200;
+        const isCurrentlyVisible = btn.classList.contains('visible');
+        if (shouldBeVisible !== isCurrentlyVisible) {
+            btn.classList.toggle('visible', shouldBeVisible);
+        }
+    }
+
+    const throttledUpdateScrollToTop = throttleRAF(() => {
+        updateScrollToTopVisibility();
+    });
+
+    function initScrollToTop() {
+        let btn = document.getElementById('scrollToTopBtn') as HTMLButtonElement | null;
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.id = 'scrollToTopBtn';
+            btn.className = 'scroll-to-top-btn';
+            btn.setAttribute('aria-label', I18n.t('toolbar.scrollToTop', 'Scroll to top'));
+            btn.title = I18n.t('toolbar.scrollToTop', 'Scroll to top');
+            btn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>`;
+            document.body.appendChild(btn);
+        }
+
+        btn.addEventListener('click', () => {
+            const container = activeScrollContainer || getTableContainer();
+            if (container) {
+                container.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        });
+
+        updateScrollToTopVisibility();
+    }
 
     function initializeVirtualScrolling() {
         const container = getTableContainer();
@@ -5152,14 +5256,18 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
 
         if (activeScrollContainer && activeScrollContainer !== container) {
             activeScrollContainer.removeEventListener('scroll', onScroll);
+            activeScrollContainer.removeEventListener('scroll', throttledUpdateScrollToTop);
         }
 
         container.removeEventListener('scroll', onScroll);
+        container.removeEventListener('scroll', throttledUpdateScrollToTop);
         container.addEventListener('scroll', onScroll, { passive: true });
+        container.addEventListener('scroll', throttledUpdateScrollToTop, { passive: true });
         activeScrollContainer = container;
         currentVisibleStart = -1;
         currentVisibleEnd = -1;
         updateVisibleRows();
+        updateScrollToTopVisibility();
     }
 
     function reapplySelection() {
@@ -5283,7 +5391,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         if (el) el.classList.add('hidden');
     }
 
-    function renderWorksheet(index: number) {
+    function renderWorksheet(index: number, initialRows?: any[]) {
         if (!worksheetsMeta || !worksheetsMeta.length) return;
 
         const scrollTarget = getTableContainer();
@@ -5294,6 +5402,12 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
 
         // Reset virtual scrolling state for new worksheet
         rowCache.clear();
+        inFlightRequests.clear();
+        if (Array.isArray(initialRows) && initialRows.length > 0) {
+            initialRows.forEach((row, i) => {
+                rowCache.set(i, row);
+            });
+        }
         currentVisibleStart = 0;
         currentVisibleEnd = 0;
         virtualLoader.clear();
@@ -5675,7 +5789,8 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
             },
             showToast,
             requestAllRows,
-            normalizeCellText
+            normalizeCellText,
+            getLogicalBounds: getLogicalSelectionBounds
         });
     }
 
@@ -5743,8 +5858,45 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
             const afterSnapshot = captureWorksheetStateSnapshot();
             pushSheetUndoEntry(beforeSnapshot, afterSnapshot);
 
-            // Trigger a complete table redraw
-            rerenderCurrentSheetFromLocalState();
+            // Update visible DOM cells directly to preserve scroll position and avoid redraw reset
+            for (const edit of editsList) {
+                const r = edit.row - 1;
+                const c = edit.col - 1;
+                const domCell = document.querySelector(`td[data-row="${r}"][data-col="${c}"]`) as HTMLElement | null;
+                if (domCell) {
+                    const cellData = getOrCreateRowCellData(r, c);
+                    const cellType = cellData.cellType || 'text';
+                    if (cellType === 'checkbox') {
+                        const checked = parseBooleanCellValue(edit.value);
+                        domCell.innerHTML = `<span class="cell-content cell-checkbox-content"><input type="checkbox" class="xlsx-cell-checkbox" aria-label="Cell checkbox"${checked ? ' checked' : ''} /><span class="checkbox-value">${checked ? 'TRUE' : 'FALSE'}</span></span>`;
+                        applyInteractiveControlState(domCell);
+                    } else if (cellType === 'rating') {
+                        const rating = normalizeRatingValue(edit.value);
+                        let stars = '';
+                        for (let i = 1; i <= 5; i++) {
+                            stars += `<button type="button" class="xlsx-rating-star${i <= rating ? ' active' : ''}" data-rating-value="${i}" aria-label="Rate ${i} of 5">★</button>`;
+                        }
+                        domCell.innerHTML = `<span class="cell-content cell-rating-content" data-rating-value="${rating}">${stars}<span class="rating-value">${rating || ''}</span></span>`;
+                        applyInteractiveControlState(domCell);
+                    } else if (cellType === 'date') {
+                        const dateVal = normalizeDateInputValue(edit.value);
+                        domCell.innerHTML = `<span class="cell-content cell-date-content"><input type="date" class="xlsx-cell-date" aria-label="Cell date" value="${dateVal}" /></span>`;
+                        applyInteractiveControlState(domCell);
+                    } else if (cellType === 'dropdown') {
+                        const options = cellData.dropdownOptions || [];
+                        domCell.innerHTML = renderDropdownCellContent({
+                            options,
+                            selectedValue: edit.value,
+                            allowInteractiveControls: areInteractiveControlsEnabled(),
+                            showEditButton: isEditMode
+                        });
+                        updateDropdownCellPresentation(domCell, edit.value);
+                        applyInteractiveControlState(domCell);
+                    } else {
+                        setPlainCellContent(domCell, edit.value);
+                    }
+                }
+            }
 
             // Re-select the pasted range
             const endRow = Math.min(totalRows - 1, startRow + grid.length - 1);
@@ -5771,6 +5923,28 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                 }
             }
         }
+    }
+
+    async function triggerPaste() {
+        if (isVersionPreviewMode) {
+            showToast('Version preview is read-only');
+            return;
+        }
+
+        if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (typeof text === 'string' && text.length > 0) {
+                    pasteTextAtSelection(text);
+                    return;
+                }
+            } catch {
+                // Clipboard read permission might be blocked in webview iframe;
+                // fall through to requesting from the extension host.
+            }
+        }
+
+        vscode.postMessage({ command: 'requestPaste' });
     }
 
     function invertColor(color: string) {
@@ -6335,14 +6509,16 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
 
                     // After scrolling, determine the element under the pointer and update selection
                     const el = document.elementFromPoint(lastMousePos.x, lastMousePos.y);
-                    const nearestCell = el ? el.closest && el.closest('td') : null;
-                    if (nearestCell) {
+                    const nearestCell = el ? el.closest && el.closest('td:not(.virtual-spacer td)') : null;
+                    if (nearestCell && (nearestCell as HTMLElement).dataset.row !== undefined) {
                         const htmlCell = nearestCell as HTMLElement;
                         const r = parseInt(htmlCell.dataset.row!, 10);
                         const c = parseInt(htmlCell.dataset.col!, 10);
-                        if (!selectionEnd || selectionEnd.row !== r || selectionEnd.col !== c) {
-                            selectionEnd = { row: r, col: c };
-                            selectRange(selectionStart!.row, selectionStart!.col, r, c);
+                        if (!Number.isNaN(r) && !Number.isNaN(c)) {
+                            if (!selectionEnd || selectionEnd.row !== r || selectionEnd.col !== c) {
+                                selectionEnd = { row: r, col: c };
+                                selectRange(selectionStart!.row, selectionStart!.col, r, c);
+                            }
                         }
                     }
                 }
@@ -6479,6 +6655,12 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                     return;
                 }
 
+                if (isCmdOrCtrl && key === 'v') {
+                    e.preventDefault();
+                    showToast('Version preview is read-only');
+                    return;
+                }
+
                 if (!allowNavigation) {
                     e.preventDefault();
                     showToast('Version preview is read-only');
@@ -6604,14 +6786,20 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                     applyStrikeThrough();
                     return;
                 }
-
-                return;
             }
 
             if (isCmdOrCtrl && e.key.toLowerCase() === 'c') {
                 e.preventDefault();
                 copySelectionToClipboard();
                 return;
+            }
+
+            if (isCmdOrCtrl && e.key.toLowerCase() === 'v') {
+                if (!isCellEditing) {
+                    e.preventDefault();
+                    void triggerPaste();
+                    return;
+                }
             }
 
             if (isCmdOrCtrl && e.key.toLowerCase() === 'a') {
@@ -6919,6 +7107,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         setStoredSettingsForScope(scope, currentSettings);
 
         Utils.showPopupsEnabled = currentSettings.showPopups !== false;
+        updateScrollToTopVisibility();
 
         if (!currentSettings.autoSave) {
             clearAutoSaveTimer();
@@ -7494,6 +7683,13 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         toolbarManager.setButtonTooltip('refreshButton', I18n.t('toolbar.refresh', 'Reload file from disk'));
         toolbarManager.setButtonTooltip('toggleBackgroundButton', I18n.t('toolbar.theme', 'Toggle Theme'));
 
+        const scrollBtn = document.getElementById('scrollToTopBtn');
+        if (scrollBtn) {
+            const title = I18n.t('toolbar.scrollToTop', 'Scroll to top');
+            scrollBtn.title = title;
+            scrollBtn.setAttribute('aria-label', title);
+        }
+
         updateExpandButtonLabel();
         updatePlainViewButtonLabel();
 
@@ -7685,6 +7881,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         }
 
         wireSettingsUI();
+        initScrollToTop();
 
         document.addEventListener('click', (e) => {
             const target = e.target as HTMLElement | null;
@@ -7749,6 +7946,11 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
             return;
         }
 
+        if (message.command === 'externalFileChanged') {
+            showToast('文件已被外部修改；请先处理冲突后再保存。', false, 5000);
+            return;
+        }
+
         if (message.command === 'initSettings') {
             consumeIncomingSettingsPayload(message);
             return;
@@ -7794,10 +7996,14 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                 }
             } else {
                 const isAutosaveResult = !!message.isAutosave;
-                const errorMessage = typeof message.error === 'string' && message.error.trim()
-                    ? message.error.trim().slice(0, 300)
-                    : (isAutosaveResult ? I18n.t('toast.autosaveFailed', 'Autosave failed') : I18n.t('toast.errorSaving', 'Error saving'));
-                showToast(errorMessage, isAutosaveResult, isAutosaveResult ? 1800 : 3500);
+                showToast(message.error || (isAutosaveResult ? I18n.t('toast.autosaveFailed', 'Autosave failed') : I18n.t('toast.errorSaving', 'Error saving')), false, 5000);
+            }
+            return;
+        }
+
+        if (message.command === 'pasteFromClipboard') {
+            if (typeof message.text === 'string' && message.text) {
+                pasteTextAtSelection(message.text);
             }
             return;
         }
@@ -7890,7 +8096,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                 setVersionPreviewMode(false);
             }
 
-            renderWorksheet(currentWorksheet);
+            renderWorksheet(currentWorksheet, message.initialRows);
             return;
         }
 

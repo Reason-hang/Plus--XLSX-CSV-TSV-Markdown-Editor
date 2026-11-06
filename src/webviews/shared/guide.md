@@ -1,48 +1,38 @@
-# Webview 共享组件说明
+# Shared Webview Components Guide
 
-`.3` 的 Markdown 工具栏由 `../md/mdToolbarController.ts` 管理原节点与布局草稿，纯模型在 `src/shared/mdToolbarLayout.ts`；完整约定见 [工具栏说明](../../../docs/04-开发文档/Markdown工具栏布局与返回顶部.md)。共享 `ToolbarManager.setButtons()` 仍只在初始化调用，不能用来应用 Markdown 排序，以免破坏设置／主题绑定。
+This directory contains shared components and utilities used across the different webviews (Markdown, Table, XLSX).
 
-## 目录
-
-- [组件](#组件)
-- [Markdown 外置主题](#markdown-外置主题)
-
-本目录存放 Markdown、CSV、TSV、XLSX Webview 共用的前端组件与工具。
-
-## 组件
+## Components
 
 ### `common.ts`
-
-通用工具与常量：VS Code API 包装、虚拟滚动参数、`debounce` 等。
+Contains common utilities and constants.
+- `vscode`: Wrapper for the VS Code API.
+- `VirtualScrollConfig`: Constants for virtual scrolling (ROW_HEIGHT, BUFFER_ROWS, CHUNK_SIZE).
+- `debounce`: Utility function for debouncing events.
 
 ### `virtualLoader.ts`
-
-虚拟滚动数据加载器，负责向扩展宿主请求表格行数据。
+Handles data fetching for virtual scrolling.
+- `VirtualLoader`: Class that manages requests to the extension host for row data.
 
 ### `themeManager.ts`
-
-管理浅色、深色和 VS Code 高对比度主题切换。
+Manages theme switching (Light, Dark, VS Code High Contrast).
 
 ### `settingsManager.ts`
-
-管理设置面板及设置持久化。
+Manages the settings panel and persistence.
 
 ### `toolbarManager.ts`
-
-管理工具栏按钮、分组与状态。
+Manages the toolbar buttons and their states.
 
 ### `utils.ts`
-
-常用前端工具，包括 DOM 查询、提示消息、剪贴板、HTML 转义与单元格文本规范化。
+General utilities.
+- `$`: DOM element selector.
+- `showToast`: Displays a toast notification.
+- `writeToClipboardAsync`: Handles clipboard operations.
+- `escapeHtml`: Escapes HTML strings.
+- `normalizeCellText`: Normalizes text for cell display.
 
 ### `icons.ts`
-
-工具栏使用的 SVG 图标字符串。
+Contains SVG icon strings used in the toolbar.
 
 ### `infoTooltip.ts`
-
-在工具栏注入说明性提示，用于解释视图切换等操作。
-
-## Markdown 外置主题
-
-完整主题不放在本目录。扩展宿主读取 `xlsxViewer.md.theme.cssFile` 指向的已编译 CSS，并在 Markdown Webview 中以最后加载的 `<style>` 注入。主题源码、构建器、MPE 适配层和迁移审计器均位于 `themes/markdown-theme/`；详细规则见其 [README](../../../themes/markdown-theme/README.md)。
+Injects an informational tooltip into the toolbar, typically used to explain how to switch views.

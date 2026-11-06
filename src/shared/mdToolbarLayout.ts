@@ -20,8 +20,10 @@ export const MD_TOOLBAR_ITEMS: readonly MdToolbarItem[] = [
     { id: 'save', nodes: ['saveEditsButton'], zh: '保存', en: 'Save', mode: 'edit', liveOnly: true, configurable: false, blockWhileSaving: true },
     { id: 'cancel', nodes: ['cancelEditsButton'], zh: '取消编辑', en: 'Cancel edit', mode: 'edit', liveOnly: true, configurable: false, blockWhileSaving: true },
     { id: 'outline', nodes: ['toggleTocButton'], zh: '大纲', en: 'Outline' },
+    { id: 'increaseTextSize', nodes: ['increaseTextSizeButton'], zh: '放大文字', en: 'Increase text size' },
+    { id: 'decreaseTextSize', nodes: ['decreaseTextSizeButton'], zh: '缩小文字', en: 'Decrease text size' },
+    { id: 'resetTextSize', nodes: ['resetTextSizeButton'], zh: '重置文字大小', en: 'Reset text size' },
     { id: 'rtl', nodes: ['toggleRtlButton'], zh: 'RTL 文本方向', en: 'RTL direction' },
-    { id: 'backToTop', nodes: ['backToTopButton'], zh: '返回顶部', en: 'Back to top' },
     { id: 'search', nodes: ['searchButton'], zh: '搜索', en: 'Search' },
     { id: 'settings', nodes: ['openSettingsButton'], zh: '设置', en: 'Settings', configurable: false, blockWhileSaving: true },
     { id: 'theme', nodes: ['toggleBackgroundButton'], zh: '切换主题', en: 'Theme', mode: 'preview', blockWhileSaving: true },
@@ -65,7 +67,7 @@ export function resolveMdToolbarLayout(raw: unknown, legacy = false): MdToolbarL
     for (let i = 0; i < defaults.length; i++) {
         const id = defaults[i];
         if (order.includes(id)) { continue; }
-        // New actions follow the next known default neighbor (backToTop precedes search).
+        // Insert new actions before the next known default neighbor.
         const next = defaults.slice(i + 1).find(other => order.includes(other));
         order.splice(next ? order.indexOf(next) : order.length, 0, id);
     }

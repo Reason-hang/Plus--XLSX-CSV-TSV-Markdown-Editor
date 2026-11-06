@@ -44,6 +44,7 @@ const MARKDOWN_COMMANDS = new Set([
     'openExternal',
     'openRelativeFile',
     'requestFreshData',
+    'reportScrollDiagnostics',
     'resolveImageUris',
     'restoreVersion',
     'saveMarkdown',
@@ -68,6 +69,7 @@ const SPREADSHEET_COMMANDS = new Set([
     'getSystemDetails',
     'openExternal',
     'requestFreshData',
+    'requestPaste',
     'requestStyleMode',
     'restoreVersion',
     'saveXlsxEdits',
@@ -358,6 +360,21 @@ export function validateWebviewMessage(message: unknown, surface: WebviewSurface
     }
 
     switch (command) {
+        case 'reportScrollDiagnostics': {
+            const phase = validateString(message.phase, '诊断阶段', 64);
+            if (!phase.ok) { return phase; }
+            const epoch = validateFiniteInteger(message.epoch, '渲染批次', 0, Number.MAX_SAFE_INTEGER);
+            if (!epoch.ok) { return epoch; }
+            if (!isRecord(message.scrollTops)) { return reject('WEBVIEW_FIELD_INVALID', 'scrollTops 必须是对象。'); }
+            for (const key of ['editor', 'preview', 'content', 'document']) {
+                const value = validateFiniteInteger(message.scrollTops[key], `scrollTops.${key}`, 0, Number.MAX_SAFE_INTEGER);
+                if (!value.ok) { return value; }
+            }
+            if (!isRecord(message.settings) || typeof message.settings.syncScroll !== 'boolean' || typeof message.settings.stickyToolbar !== 'boolean') {
+                return reject('WEBVIEW_FIELD_INVALID', '诊断 settings 必须包含布尔值 syncScroll 和 stickyToolbar。');
+            }
+            return pass();
+        }
         case 'resolveImageUris': {
             if (!Array.isArray(message.sources) || message.sources.length > WEBVIEW_LIMITS.maxImageSources) {
                 return reject('WEBVIEW_LIMIT_EXCEEDED', `图片 sources 不能超过 ${WEBVIEW_LIMITS.maxImageSources} 项。`);
@@ -369,6 +386,9 @@ export function validateWebviewMessage(message: unknown, surface: WebviewSurface
             return pass();
         }
         case 'saveMarkdown':
+            if (message.silent !== undefined && typeof message.silent !== 'boolean') {
+                return reject('WEBVIEW_FIELD_INVALID', 'silent 必须是布尔值。');
+            }
             return validateString(message.text, 'Markdown 正文', WEBVIEW_LIMITS.maxMarkdownContentBytes);
         case 'savePdfData':
             return validateBase64(message.data);

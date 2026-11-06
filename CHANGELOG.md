@@ -1,18 +1,47 @@
 # Changelog
 
-## v2.0.1-local.3 - Markdown 工具栏配置与返回顶部
+## v2.0.7-local.1（候选）
 
-- 新增返回顶部按钮及当前 Markdown 预览命令，支持不同滚动容器与分屏同步设置。
-- 新增四列紧凑卡片配置，支持拖动、Alt 方向键排序、按钮与说明图片显隐、草稿应用／取消、恢复默认。
-- 用稳定项目 ID 和运行上下文分离用户偏好与模式限制，移动原节点以保留设置、主题等绑定；独立布局保存带回执和冲突提示。
-- 补充脚本 nonce；测试入口禁止隐式下载最新版 IDE，必须显式指定现有可执行文件且启动前获授权。
-- 自动化、浏览器夹具、真实 IDE 与安装结果分层记录；限制及操作说明见 `docs/04-开发文档/Markdown工具栏布局与返回顶部.md`。
+- 以上游 `v2.0.7` 为基线，迁入个人工具栏布局、Markdown 外观与主题、安全保存和历史能力；自研与上游归属见自研差异台账。
+- 使用上游的浮动返回顶部与插件自动保存，不再迁入旧版自研返回顶部按钮。
+- 调整工具栏两层对齐，工具栏布局写入扩展状态并兼容读取旧设置，避免依赖旧布局配置键的注册状态。
+- 已完成本地构建、隔离自动化与部分浏览器检查；真实 IDE 保存、恢复与安装状态以实际验收记录为准。
 
-## v2.0.1-local.1 - Fork Migration (source and build verified)
-- Based on the official `v2.0.1` commit, carried forward the selected `1.9.98-local.10` appearance, theme, security, and file consistency changes.
-- Kept upstream language switching, Markdown fence/Mermaid handling, and spreadsheet improvements.
-- Blocked Preview Edit saves for documents containing fenced code or tabs; added unique heading fallback for internal Markdown links.
-- Extension Host and real IDE acceptance remain pending; see `docs/07-版本与发布/v2.0.1-local.1-迁移决策与验收.md`.
+## v2.0.7 – Automatic Saving & Settings UI Rework
+- Added optional **Auto Save** for each supported file type (disabled by default).
+- Added a configurable save delay in Editor Settings.
+- Added an **“Autosaved”** status indicator after automatic saving.
+- Updated the Settings UI to accommodate the new Auto Save options.
+
+## v2.0.6 - Large Document Preview & Performance Improvements
+- **Reliable Image Loading**: Fixed images failing to load in large documents by resolving paths in smooth, prioritized batches.
+- **Smoother Editing**: Dynamic preview updates prevent typing lag in large files while keeping previews instant for regular files.
+- **Protected History & Sync**: Capped version history size and debounced file reloading to prevent freezes and save disk space.
+
+## v2.0.5 - Checkbox & Formatting Fixes
+- **Interactive Checkboxes**: Checkboxes can now be clicked and toggled in preview mode.
+- **Preserved Straight Quotes**: Quotes (`"` and `'`) stay straight and are no longer converted to curly quotes on save.
+- **Standard List Spacing**: Lists now use clean standard single spacing (`- `) instead of triple spaces.
+
+## v2.0.4 - Markdown Text Size Controls & Table Zoom
+- **Easy Text Resizing**: Added 3 quick buttons (`+`, `-`, and `Reset`) directly in the toolbar before the RTL button to easily enlarge, reduce, or reset text size.
+- **Full Document & Table Scaling**: Text resizing now smoothly scales everything in your document, including tables, code blocks, lists, and headings.
+- **Convenient Shortcuts**: Zoom in or out quickly with `Ctrl/Cmd` + `+` / `-`, reset with `Ctrl/Cmd` + `0`, or use `Ctrl/Cmd` + Mouse Scroll.
+
+## v2.0.3 - Scroll to Top Button, Setting & Spreadsheet Virtualization Overhaul
+- Added scroll-to-top button and an option to disable it.
+- **Spreadsheet Virtualization Overhaul**:
+  - Replaced debounced scroll handling with `requestAnimationFrame` (`throttleRAF`) for smooth 60fps/120fps scrolling without delay or frozen rows.
+  - Implemented proactive background pre-fetching in the scroll direction, pre-caching upcoming chunks before the viewport reaches them to eliminate blank screen flashes.
+  - Added initial row streaming (`initialRows`) directly in the startup payload to guarantee instantaneous first paint without empty cell skeletons.
+  - Eliminated column width shifting/jitter during scroll by preventing dynamic width recalculation from running on virtualized row updates.
+  - Added dedicated CSS for virtual spacer rows to prevent height distortion and scroll jumps caused by table cell line-height clamps.
+  - Enabled multi-chunk selection copying using logical bounds so offscreen rows are preserved when copying to clipboard.
+  - Optimized cell lookup from O(N) to O(1) in the row renderer, speeding up multi-column grid rendering.
+  - Fixed drag-selection auto-scroll `NaN` bug when cursor reaches virtual spacer elements.
+
+## v2.0.2 - Clipboard Paste Bug Fix
+- Fixed `Cmd+V` / `Ctrl+V` paste bug.
 
 ## v2.0.1 - Chinese Language Support & Language Switcher
 - Added Chinese (Simplified) localization across XLSX, CSV, TSV, and Markdown editors.

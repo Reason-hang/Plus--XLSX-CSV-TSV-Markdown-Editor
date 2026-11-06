@@ -1,9 +1,5 @@
-# Bundled KaTeX stylesheet and fonts
+# 内置 KaTeX 样式与字体
 
-This directory contains the `katex.min.css` stylesheet and font files copied
-from the installed `katex` package at build time. The current package version
-is `0.16.47`.
+本目录保存与锁文件中 `katex` 版本 `0.16.45` 对应的 `katex.min.css` 和字体文件。Markdown Webview 使用 `webview.asWebviewUri` 加载这些本地资源，不依赖 KaTeX CDN。
 
-The Markdown Webview loads this stylesheet through `webview.asWebviewUri`.
-It does not use the KaTeX CDN, so formula rendering does not require network
-access and the VSIX contains the CSS/font resources it needs.
+升级 KaTeX 时应同时核对 JavaScript 依赖、CSS 和字体，并检查最终 VSIX 中的资源与离线渲染；源码中存在文件不代表安装包或真实 IDE 已验收。

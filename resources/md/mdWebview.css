@@ -2,6 +2,9 @@
     --formatting-height: 0px;
     --toc-indent: 20px;
     --toc-guide-color: rgba(0, 0, 0, 0.14);
+    --md-font-scale: 1;
+    --md-preview-font-size: 14px;
+    --md-editor-font-size: 13px;
 }
 
 body.dark-mode,
@@ -17,17 +20,6 @@ body.vscode-dark {
 html, body {
     height: 100%;
     overflow: hidden;
-}
-
-:root {
-    --xlsx-viewer-md-mark-background: #FF4E00;
-    --xlsx-viewer-md-mark-color: inherit;
-    --xlsx-viewer-md-mark-font-weight: inherit;
-    --xlsx-viewer-md-mark-padding: 0 2px;
-    --xlsx-viewer-md-mark-border-radius: 2px;
-    --xlsx-viewer-md-heading-color: #569CD6;
-    --xlsx-viewer-md-editor-font-size: 16px;
-    --xlsx-viewer-md-editor-line-height: 1.8;
 }
 
 body {
@@ -230,6 +222,14 @@ body.preview-edit-mode .markdown-container {
     max-height: 100% !important;
     min-height: 0 !important;
     overflow: hidden !important;
+}
+
+/* Split-edit panes own scrolling while the preview is being redrawn. */
+body.edit-mode #content,
+body.edit-mode .editor-wrapper,
+body.edit-mode .markdown-preview,
+body.edit-mode .markdown-editor {
+    overflow-anchor: none;
 }
 
 
@@ -660,8 +660,8 @@ body.resizing * {
     outline: none;
     resize: none;
     font-family: var(--font-mono);
-    font-size: var(--xlsx-viewer-md-editor-font-size);
-    line-height: var(--xlsx-viewer-md-editor-line-height);
+    font-size: calc(var(--xlsx-viewer-md-editor-font-size, 16px) * var(--md-font-scale, 1));
+    line-height: var(--xlsx-viewer-md-editor-line-height, 1.8);
     padding: 16px;
     background: var(--bg-color);
     color: var(--text-color);
@@ -680,8 +680,8 @@ body.resizing * {
     max-width: 100%;
     color: var(--xlsx-viewer-md-preview-color, var(--text-color));
     background: var(--xlsx-viewer-md-preview-background, var(--bg-color));
-    font-size: var(--xlsx-viewer-md-preview-font-size, inherit);
-    line-height: var(--xlsx-viewer-md-preview-line-height, inherit);
+    font-size: calc(var(--xlsx-viewer-md-preview-font-size, 14px) * var(--md-font-scale, 1));
+    line-height: var(--xlsx-viewer-md-preview-line-height, 1.5);
 }
 
 .markdown-preview.hidden {
@@ -690,7 +690,6 @@ body.resizing * {
 
 /* GitHub-style Markdown */
 .markdown-preview h1 {
-    color: var(--xlsx-viewer-md-heading-color);
     font-size: 2em;
     font-weight: 600;
     margin: 0 0 16px 0;
@@ -700,7 +699,6 @@ body.resizing * {
 }
 
 .markdown-preview h2 {
-    color: var(--xlsx-viewer-md-heading-color);
     font-size: 1.5em;
     font-weight: 600;
     margin: 24px 0 16px 0;
@@ -710,16 +708,20 @@ body.resizing * {
 }
 
 .markdown-preview h3 {
-    color: var(--xlsx-viewer-md-heading-color);
     font-size: 1.25em;
     font-weight: 600;
     margin: 24px 0 16px 0;
     line-height: 1.25;
 }
 
-.markdown-preview h4 { color: var(--xlsx-viewer-md-heading-color); font-size: 1em; font-weight: 600; margin: 24px 0 16px 0; }
-.markdown-preview h5 { color: var(--xlsx-viewer-md-heading-color); font-size: 0.875em; font-weight: 600; margin: 24px 0 16px 0; }
-.markdown-preview h6 { color: var(--xlsx-viewer-md-heading-color); font-size: 0.85em; font-weight: 600; margin: 24px 0 16px 0; }
+.markdown-preview h4 { font-size: 1em; font-weight: 600; margin: 24px 0 16px 0; }
+.markdown-preview h5 { font-size: 0.875em; font-weight: 600; margin: 24px 0 16px 0; }
+.markdown-preview h6 { font-size: 0.85em; font-weight: 600; margin: 24px 0 16px 0; color: var(--text-muted); }
+
+.markdown-preview h1, .markdown-preview h2, .markdown-preview h3,
+.markdown-preview h4, .markdown-preview h5, .markdown-preview h6 {
+    color: var(--xlsx-viewer-md-heading-color, #569CD6);
+}
 
 .markdown-preview p {
     margin: 0 0 16px 0;
@@ -851,14 +853,26 @@ body.show-line-numbers .markdown-preview pre {
 }
 
 /* Task lists */
-.markdown-preview .task-item {
+.markdown-preview .contains-task-list {
+    list-style: none;
+    padding-left: 1.5em;
+}
+
+.markdown-preview .task-item,
+.markdown-preview .task-list-item {
     list-style: none;
     margin-left: -1.5em;
 }
 
-.markdown-preview .task-item input[type="checkbox"] {
+.markdown-preview .task-item input[type="checkbox"],
+.markdown-preview .task-list-item-checkbox {
     margin-right: 8px;
     vertical-align: middle;
+    cursor: pointer;
+}
+
+.markdown-preview .task-list-item-checkbox:disabled {
+    cursor: default;
 }
 
 /* Blockquotes */
@@ -944,24 +958,23 @@ body.show-line-numbers .markdown-preview pre {
     width: max-content;
     max-width: 100%;
     border-collapse: collapse;
-    margin: 16px 0;
-    font-size: 13px;
+    margin: calc(16px * var(--md-font-scale, 1)) 0;
+    font-size: calc(13px * var(--md-font-scale, 1));
     overflow: auto;
     display: block;
-    background: var(--bg-color);
-    color: var(--text-color);
 }
 
 .markdown-preview table.md-table th,
 .markdown-preview table.md-table td {
-    padding: 6px 13px;
+    padding: calc(6px * var(--md-font-scale, 1)) calc(13px * var(--md-font-scale, 1));
     border: 1px solid var(--border-color);
-    color: var(--text-color);
+    line-height: 1.5;
 }
 
 body.preview-edit-mode .markdown-preview table.md-table th,
 body.preview-edit-mode .markdown-preview table.md-table td {
-    height: 36px;
+    min-height: calc(36px * var(--md-font-scale, 1));
+    height: auto;
     vertical-align: top;
 }
 
@@ -970,12 +983,8 @@ body.preview-edit-mode .markdown-preview table.md-table td {
     font-weight: 600;
 }
 
-.markdown-preview table.md-table td {
-    background: var(--bg-color);
-}
-
-.markdown-preview table.md-table tbody tr:nth-child(even) td {
-    background: color-mix(in srgb, var(--bg-color) 94%, var(--text-color) 6%);
+.markdown-preview table.md-table tr:nth-child(2n) {
+    background: var(--header-bg);
 }
 
 /* Hover controls under editable tables (preview-edit mode only) */
@@ -1065,6 +1074,7 @@ body.preview-edit-mode .markdown-preview .table-tool-btn[data-table-action="tabl
 .markdown-preview strong { font-weight: 600; }
 .markdown-preview em { font-style: italic; }
 .markdown-preview del { text-decoration: line-through; }
+.markdown-preview mark { background: var(--warning-bg); padding: 0.1em 0.2em; border-radius: 3px; }
 
 /* ===== Status Info ===== */
 .status-info {
@@ -1255,10 +1265,7 @@ html::-webkit-scrollbar-corner,
     padding: 4px 12px;
     background: var(--toolbar-bg);
     border-bottom: 1px solid var(--border-color);
-    flex-wrap: wrap;
-    align-content: center;
-    overflow-x: hidden;
-    overflow-y: visible;
+    overflow-x: auto;
     scrollbar-width: none;
     z-index: 19;
 }
@@ -1280,11 +1287,9 @@ body.sticky-toolbar-enabled .formatting-toolbar {
     display: flex;
     align-items: center;
     gap: 1px;
-    flex: 0 0 auto;
 }
 
 .fmt-sep {
-    flex: 0 0 1px;
     width: 1px;
     height: 20px;
     margin: 0 6px;
@@ -1298,7 +1303,6 @@ body.sticky-toolbar-enabled .formatting-toolbar {
     justify-content: center;
     width: 28px;
     height: 28px;
-    flex: 0 0 28px;
     padding: 0;
     border: none;
     border-radius: 4px;
@@ -1330,6 +1334,18 @@ body.sticky-toolbar-enabled .formatting-toolbar {
     font-weight: 700;
     letter-spacing: -0.5px;
     line-height: 1;
+    font-family: var(--font-mono);
+}
+
+
+.fmt-btn.fmt-text-size-val {
+    font-size: 10px;
+    font-weight: 600;
+    min-width: 36px;
+    padding: 0 4px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    user-select: none;
     font-family: var(--font-mono);
 }
 
@@ -1404,11 +1420,11 @@ body.sticky-toolbar-enabled .formatting-toolbar {
 
 /* Marked Text */
 .markdown-preview mark {
-    background-color: var(--xlsx-viewer-md-mark-background);
-    color: var(--xlsx-viewer-md-mark-color);
-    font-weight: var(--xlsx-viewer-md-mark-font-weight);
-    padding: var(--xlsx-viewer-md-mark-padding);
-    border-radius: var(--xlsx-viewer-md-mark-border-radius);
+    background-color: var(--xlsx-viewer-md-mark-background, #FF4E00);
+    color: var(--xlsx-viewer-md-mark-color, inherit);
+    font-weight: var(--xlsx-viewer-md-mark-font-weight, inherit);
+    padding: var(--xlsx-viewer-md-mark-padding, 0 2px);
+    border-radius: var(--xlsx-viewer-md-mark-border-radius, 2px);
 }
 
 /* Abbreviations */
@@ -1653,8 +1669,8 @@ body:not(.show-line-numbers) .markdown-preview .code-line::before {
 }
 
 /* Markdown-only presentation: keep the settings node outside the scrolling items. */
-#toolbar.md-custom-toolbar { overflow: visible; gap: 8px; box-sizing: border-box; }
-.md-toolbar-items { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: thin; }
+#toolbar.md-custom-toolbar { overflow: visible; gap: 8px; box-sizing: border-box; align-items: flex-start; }
+.md-toolbar-items { display: flex; align-items: flex-start; gap: 8px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: thin; }
 .md-toolbar-items > .tooltip, #toolbar.md-custom-toolbar > .tooltip { flex: 0 0 auto; }
 #customizeMdToolbarButton { margin-right: 8px; }
 .md-layout-backdrop[hidden] { display: none !important; }

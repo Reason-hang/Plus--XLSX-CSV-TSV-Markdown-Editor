@@ -6,9 +6,13 @@ export interface XlsxViewSettings {
     stickyToolbar: boolean;
     stickyHeader: boolean;
     autoSave: boolean;
+    autoSaveDelay?: number;
+    autoSaveDelayOverride?: number;
+    editorAutoSaveDelay?: number;
     autoSaveMode: 'all' | 'controlsOnly';
     showManualSavePopup: boolean;
     showPopups: boolean;
+    showScrollToTop?: boolean;
     allowInteractiveControlsOutsideEditMode: boolean;
     hyperlinkPreview: boolean;
     spaciousCells: boolean;
@@ -24,9 +28,13 @@ export const defaultXlsxViewSettings: XlsxViewSettings = {
     stickyToolbar: true,
     stickyHeader: false,
     autoSave: false,
+    autoSaveDelay: 1000,
+    autoSaveDelayOverride: 0,
+    editorAutoSaveDelay: 1000,
     autoSaveMode: 'all',
     showManualSavePopup: true,
     showPopups: true,
+    showScrollToTop: true,
     allowInteractiveControlsOutsideEditMode: true,
     hyperlinkPreview: true,
     spaciousCells: false,
@@ -43,9 +51,13 @@ export function normalizeXlsxSettings(next: any, previous: XlsxViewSettings): Xl
         stickyToolbar: next && typeof next.stickyToolbar === 'boolean' ? next.stickyToolbar : previous.stickyToolbar,
         stickyHeader: next && typeof next.stickyHeader === 'boolean' ? next.stickyHeader : previous.stickyHeader,
         autoSave: next && typeof next.autoSave === 'boolean' ? next.autoSave : previous.autoSave,
+        autoSaveDelay: next && typeof next.autoSaveDelay === 'number' ? next.autoSaveDelay : previous.autoSaveDelay,
+        autoSaveDelayOverride: next && typeof next.autoSaveDelayOverride === 'number' ? next.autoSaveDelayOverride : previous.autoSaveDelayOverride,
+        editorAutoSaveDelay: next && typeof next.editorAutoSaveDelay === 'number' ? next.editorAutoSaveDelay : previous.editorAutoSaveDelay,
         autoSaveMode: next && (next.autoSaveMode === 'all' || next.autoSaveMode === 'controlsOnly') ? next.autoSaveMode : previous.autoSaveMode,
         showManualSavePopup: next && typeof next.showManualSavePopup === 'boolean' ? next.showManualSavePopup : previous.showManualSavePopup,
         showPopups: next && typeof next.showPopups === 'boolean' ? next.showPopups : (previous.showPopups !== undefined ? previous.showPopups : true),
+        showScrollToTop: next && typeof next.showScrollToTop === 'boolean' ? next.showScrollToTop : (previous.showScrollToTop !== undefined ? previous.showScrollToTop : true),
         allowInteractiveControlsOutsideEditMode: next && typeof next.allowInteractiveControlsOutsideEditMode === 'boolean' ? next.allowInteractiveControlsOutsideEditMode : previous.allowInteractiveControlsOutsideEditMode,
         hyperlinkPreview: next && typeof next.hyperlinkPreview === 'boolean' ? next.hyperlinkPreview : previous.hyperlinkPreview,
         spaciousCells: next && typeof next.spaciousCells === 'boolean' ? next.spaciousCells : previous.spaciousCells,
@@ -68,10 +80,12 @@ export function syncSettingsCheckboxes(settings: XlsxViewSettings, fileType?: st
     const chkSticky = document.getElementById('chkStickyHeader') as HTMLInputElement | null;
     const chkToolbar = document.getElementById('chkStickyToolbar') as HTMLInputElement | null;
     const chkAutoSave = document.getElementById('chkAutoSave') as HTMLInputElement | null;
+    const autoSaveDelayInput = document.getElementById('numAutoSaveDelay') as HTMLInputElement | null;
     const radioAutoSaveAll = document.getElementById('radioAutoSaveAll') as HTMLInputElement | null;
     const radioAutoSaveControlsOnly = document.getElementById('radioAutoSaveControlsOnly') as HTMLInputElement | null;
     const chkManualSavePopup = document.getElementById('chkShowManualSavePopup') as HTMLInputElement | null;
     const chkShowPopups = document.getElementById('chkShowPopups') as HTMLInputElement | null;
+    const chkShowScrollToTop = document.getElementById('chkShowScrollToTop') as HTMLInputElement | null;
     const chkOutsideControls = document.getElementById('chkAllowInteractiveControlsOutsideEditMode') as HTMLInputElement | null;
     const chkHyperlink = document.getElementById('chkHyperlinkPreview') as HTMLInputElement | null;
     const chkSpacious = document.getElementById('chkSpaciousCells') as HTMLInputElement | null;
@@ -92,10 +106,14 @@ export function syncSettingsCheckboxes(settings: XlsxViewSettings, fileType?: st
     }
     if (chkToolbar) chkToolbar.checked = !!settings.stickyToolbar;
     if (chkAutoSave) chkAutoSave.checked = !!settings.autoSave;
+    if (autoSaveDelayInput) {
+        autoSaveDelayInput.value = String(settings.autoSaveDelayOverride ?? 0);
+    }
     if (radioAutoSaveAll) radioAutoSaveAll.checked = settings.autoSaveMode !== 'controlsOnly';
     if (radioAutoSaveControlsOnly) radioAutoSaveControlsOnly.checked = settings.autoSaveMode === 'controlsOnly';
     if (chkManualSavePopup) chkManualSavePopup.checked = !!settings.showManualSavePopup;
     if (chkShowPopups) chkShowPopups.checked = settings.showPopups !== false;
+    if (chkShowScrollToTop) chkShowScrollToTop.checked = settings.showScrollToTop !== false;
     if (chkOutsideControls) chkOutsideControls.checked = !!settings.allowInteractiveControlsOutsideEditMode;
     if (chkHyperlink) chkHyperlink.checked = !!settings.hyperlinkPreview;
     if (chkSpacious) chkSpacious.checked = !!settings.spaciousCells;
@@ -122,20 +140,20 @@ export function syncSettingsCheckboxes(settings: XlsxViewSettings, fileType?: st
     const semicolonItem = radioCsvSeparatorSemicolon?.closest('.setting-item') as HTMLElement | null;
 
     if (manualSaveItem) {
-        manualSaveItem.style.display = autoSaveEnabled ? 'none' : 'inline-flex';
+        manualSaveItem.style.display = autoSaveEnabled ? 'none' : '';
     }
     if (autoSaveAllItem) {
-        autoSaveAllItem.style.display = autoSaveEnabled ? 'inline-flex' : 'none';
+        autoSaveAllItem.style.display = autoSaveEnabled ? '' : 'none';
     }
     if (autoSaveControlsItem) {
-        autoSaveControlsItem.style.display = autoSaveEnabled ? 'inline-flex' : 'none';
+        autoSaveControlsItem.style.display = autoSaveEnabled ? '' : 'none';
     }
 
     if (commaItem) {
-        commaItem.style.display = fileType === 'csv' ? 'inline-flex' : 'none';
+        commaItem.style.display = fileType === 'csv' ? '' : 'none';
     }
     if (semicolonItem) {
-        semicolonItem.style.display = fileType === 'csv' ? 'inline-flex' : 'none';
+        semicolonItem.style.display = fileType === 'csv' ? '' : 'none';
     }
 }
 
@@ -162,6 +180,7 @@ export function createXlsxSettingsDefinitions(
     return [
         {
             id: 'chkHeaderRow',
+            section: I18n.t('settings.sectionData', 'Data'),
             label: I18n.t('settings.headerRow', 'Header Row'),
             tooltip: I18n.t('settings.headerRowTip', 'Treat the first worksheet row as a header row.'),
             onChange: (val: boolean) => {
@@ -175,6 +194,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkStickyHeader',
+            section: I18n.t('settings.sectionData', 'Data'),
             label: I18n.t('settings.stickyHeader', 'Sticky Header'),
             tooltip: I18n.t('settings.stickyHeaderTip', 'Keep the header row visible while scrolling vertically.'),
             onChange: (val: boolean) => {
@@ -185,6 +205,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkStickyToolbar',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
             label: I18n.t('settings.stickyToolbar', 'Sticky Toolbar'),
             tooltip: I18n.t('settings.stickyToolbarTip', 'Keep the top toolbar pinned while scrolling the worksheet.'),
             onChange: (val: boolean) => {
@@ -194,6 +215,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkAllowInteractiveControlsOutsideEditMode',
+            section: I18n.t('settings.sectionEditing', 'Editing'),
             label: I18n.t('settings.allowControlsOutside', 'Edit Checkbox/Dropdown Without Edit Mode'),
             tooltip: I18n.t('settings.allowControlsOutsideTip', 'Allow checkbox toggles and dropdown selection without entering table edit mode.'),
             onChange: (val: boolean) => {
@@ -203,6 +225,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkHyperlinkPreview',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
             label: I18n.t('settings.hyperlinkPreview', 'Hyperlink Preview'),
             tooltip: I18n.t('settings.hyperlinkPreviewTip', 'Show hover actions for hyperlinks, including Open in browser and Copy link.'),
             onChange: (val: boolean) => {
@@ -212,6 +235,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkSpaciousCells',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
             label: I18n.t('settings.spaciousCells', 'Spacious Cells'),
             tooltip: I18n.t('settings.spaciousCellsTip', 'Increase row height and padding for better readability.'),
             onChange: (val: boolean) => {
@@ -221,6 +245,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkTextWrap',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
             label: I18n.t('settings.textWrap', 'Text Wrap'),
             tooltip: I18n.t('settings.textWrapTip', 'Enable text wrapping in cells by default.'),
             onChange: (val: boolean) => {
@@ -230,6 +255,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkMergeWarningEnabled',
+            section: I18n.t('settings.sectionEditing', 'Editing'),
             label: I18n.t('settings.mergeWarning', 'Merge Warning Popup'),
             tooltip: I18n.t('settings.mergeWarningTip', 'Ask for confirmation before merging cells because only the top-left value is preserved.'),
             onChange: (val: boolean) => {
@@ -239,6 +265,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkAutoSave',
+            section: I18n.t('settings.sectionEditing', 'Editing'),
             label: I18n.t('settings.autoSave', 'Autosave'),
             tooltip: I18n.t('settings.autoSaveTip', 'Automatically save edits shortly after text, checkbox, dropdown, or formatting changes.'),
             onChange: (val: boolean) => {
@@ -247,7 +274,27 @@ export function createXlsxSettingsDefinitions(
             defaultValue: getSettings().autoSave
         },
         {
+            id: 'numAutoSaveDelay',
+            section: I18n.t('settings.sectionEditing', 'Editing'),
+            label: I18n.t('settings.autoSaveDelay', 'Save delay (ms)'),
+            tooltip: I18n.t('settings.autoSaveDelayTip', 'Use 0 to follow this editor’s Auto Save delay. Enter a number to use a custom delay for this file type.'),
+            inputType: 'number',
+            min: 0,
+            max: 30000,
+            step: 100,
+            onChange: (val: number) => {
+                const settings = getSettings();
+                const override = Math.max(0, Math.min(30000, Math.round(Number.isFinite(val) ? val : 0)));
+                applyAndPersist({
+                    autoSaveDelayOverride: override,
+                    autoSaveDelay: override > 0 ? override : (settings.editorAutoSaveDelay || 1000)
+                });
+            },
+            defaultValue: getSettings().autoSaveDelayOverride ?? 0
+        },
+        {
             id: 'radioAutoSaveAll',
+            section: I18n.t('settings.sectionEditing', 'Editing'),
             label: I18n.t('settings.autoSaveAll', 'Autosave all changes'),
             tooltip: I18n.t('settings.autoSaveAllTip', 'Autosave any pending worksheet edits, including text, formatting, and structure operations.'),
             className: 'setting-dependent setting-autosave-dependent',
@@ -261,6 +308,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'radioAutoSaveControlsOnly',
+            section: I18n.t('settings.sectionEditing', 'Editing'),
             label: I18n.t('settings.autoSaveControlsOnly', 'Autosave only checkbox/dropdown'),
             tooltip: I18n.t('settings.autoSaveControlsOnlyTip', 'Autosave triggers only from checkbox or dropdown changes.'),
             className: 'setting-dependent setting-autosave-dependent',
@@ -274,6 +322,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkShowManualSavePopup',
+            section: I18n.t('settings.sectionEditing', 'Editing'),
             label: I18n.t('settings.manualSavePopup', 'Manual Save Popup (Autosave Off)'),
             tooltip: I18n.t('settings.manualSavePopupTip', 'When Autosave is off, show a short reminder popup to save manually after edits.'),
             className: 'setting-dependent setting-autosave-dependent',
@@ -284,6 +333,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'chkShowPopups',
+            section: I18n.t('settings.sectionGeneral', 'General'),
             label: I18n.t('settings.showPopups', 'Show Notification Popups'),
             tooltip: I18n.t('settings.showPopupsTip', 'Show popup notifications (such as saved/autosaved toasts) during editor usage. Uncheck to disable.'),
             onChange: (val: boolean) => {
@@ -292,7 +342,18 @@ export function createXlsxSettingsDefinitions(
             defaultValue: getSettings().showPopups !== false
         },
         {
+            id: 'chkShowScrollToTop',
+            section: I18n.t('settings.sectionGeneral', 'General'),
+            label: I18n.t('settings.showScrollToTop', 'Scroll to Top Button'),
+            tooltip: I18n.t('settings.showScrollToTopTip', 'Show a button to scroll to the top when scrolling down.'),
+            onChange: (val: boolean) => {
+                applyAndPersist({ showScrollToTop: val });
+            },
+            defaultValue: getSettings().showScrollToTop !== false
+        },
+        {
             id: 'radioCsvSeparatorComma',
+            section: I18n.t('settings.sectionData', 'Data'),
             label: I18n.t('settings.csvComma', 'CSV Delimiter: Comma (,)'),
             tooltip: I18n.t('settings.csvCommaTip', 'Use comma as separator when saving CSV files.'),
             inputType: 'radio',
@@ -305,6 +366,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'radioCsvSeparatorSemicolon',
+            section: I18n.t('settings.sectionData', 'Data'),
             label: I18n.t('settings.csvSemicolon', 'CSV Delimiter: Semicolon (;)'),
             tooltip: I18n.t('settings.csvSemicolonTip', 'Use semicolon as separator when saving CSV files.'),
             inputType: 'radio',
@@ -317,6 +379,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'radioLangAuto',
+            section: I18n.t('settings.sectionGeneral', 'General'),
             label: I18n.t('settings.langAuto', 'Auto (Detect)'),
             tooltip: I18n.t('settings.languageTip', 'Auto-detect language'),
             inputType: 'radio',
@@ -329,6 +392,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'radioLangEn',
+            section: I18n.t('settings.sectionGeneral', 'General'),
             label: I18n.t('settings.langEn', 'English'),
             tooltip: 'English',
             inputType: 'radio',
@@ -341,6 +405,7 @@ export function createXlsxSettingsDefinitions(
         },
         {
             id: 'radioLangZh',
+            section: I18n.t('settings.sectionGeneral', 'General'),
             label: I18n.t('settings.langZh', '中文 (Simplified Chinese)'),
             tooltip: '简体中文',
             inputType: 'radio',

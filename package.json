@@ -2,14 +2,14 @@
     "name": "xlsx-viewer",
     "displayName": "XLSX, CSV, TSV & Markdown Editor",
     "description": "View and edit xlsx files with colors, fonts and styles (supporting in-table editing), and view and edit CSV, TSV & Markdown files in VS Code. This is an open-source project.",
-    "version": "2.0.1-local.3",
+    "version": "2.0.7-local.1",
     "publisher": "muhammad-ahmad",
     "engines": {
         "vscode": "^1.74.0"
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/Mahmadabid/XLSX-CSV-TSV-MARKDOWN-Editor-Vscode-Extension"
+        "url": "https://github.com/Reason-hang/Plus--XLSX-CSV-TSV-Markdown-Editor"
     },
     "keywords": [
         "xlsx",
@@ -76,11 +76,6 @@
             }
         ],
         "commands": [
-            {
-                "command": "xlsx-viewer.mdBackToTop",
-                "title": "返回文档顶部",
-                "category": "Markdown"
-            },
             {
                 "command": "xlsx-viewer.goBackToMdPreview",
                 "title": "Open in Preview",
@@ -167,6 +162,11 @@
                     "default": true,
                     "description": "Show popup notifications (such as save and autosave toasts) in the editor. Disable to suppress popups."
                 },
+                "xlsxViewer.showScrollToTop": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Display a scroll to top button when scrolling down in the editor."
+                },
                 "xlsxViewer.csv.firstRowIsHeader": {
                     "type": "boolean",
                     "default": true,
@@ -184,8 +184,8 @@
                 },
                 "xlsxViewer.csv.autoSave": {
                     "type": "boolean",
-                    "default": true,
-                    "description": "Automatically save CSV edits after a short debounce."
+                    "default": false,
+                    "description": "When enabled, save CSV edits after typing stops. Set the delay in the file viewer's Settings panel."
                 },
                 "xlsxViewer.csv.spaciousCells": {
                     "type": "boolean",
@@ -227,8 +227,8 @@
                 },
                 "xlsxViewer.tsv.autoSave": {
                     "type": "boolean",
-                    "default": true,
-                    "description": "Automatically save TSV edits after a short debounce."
+                    "default": false,
+                    "description": "When enabled, save TSV edits after typing stops. Set the delay in the file viewer's Settings panel."
                 },
                 "xlsxViewer.tsv.spaciousCells": {
                     "type": "boolean",
@@ -258,7 +258,7 @@
                 "xlsxViewer.xlsx.autoSave": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Automatically save XLSX edits shortly after text, checkbox, dropdown, formatting, or structure changes."
+                    "description": "When enabled, save XLSX edits after typing stops. Set the delay in the file viewer's Settings panel."
                 },
                 "xlsxViewer.xlsx.autoSaveMode": {
                     "type": "string",
@@ -304,6 +304,11 @@
                     "default": true,
                     "description": "Keep the Markdown toolbar sticky at the top of the editor."
                 },
+                "xlsxViewer.md.autoSave": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "When enabled, save Markdown edits after typing stops. Set the delay in the file viewer's Settings panel."
+                },
                 "xlsxViewer.md.wordWrap": {
                     "type": "boolean",
                     "default": true,
@@ -331,25 +336,7 @@
                 "xlsxViewer.md.moveMdButtonsToEnd": {
                     "type": "boolean",
                     "default": false,
-                    "deprecationMessage": "仅用于首次布局迁移；请在 Markdown 设置中使用自定义工具栏。",
                     "description": "Move the Enable/Disable MD buttons near Help & Feedback instead of keeping them at the start of the toolbar."
-                },
-                "xlsxViewer.md.toolbarLayout": {
-                    "type": ["object", "null"],
-                    "scope": "application",
-                    "default": null,
-                    "description": "Markdown 工具栏用户布局；建议通过预览内的设置 → 自定义工具栏修改。null 使用默认布局并兼容旧位置设置。",
-                    "properties": {
-                        "version": { "type": "integer", "enum": [1] },
-                        "order": { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 64 } },
-                        "hidden": { "type": "array", "maxItems": 64, "items": { "type": "string", "maxLength": 64 } }
-                    },
-                    "required": ["version", "order", "hidden"]
-                },
-                "xlsxViewer.md.showLineNumbers": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "Show line numbers in code blocks."
                 },
                 "xlsxViewer.md.markBackgroundColor": {
                     "type": "string",
@@ -380,21 +367,6 @@
                     "type": "string",
                     "default": "#569CD6",
                     "description": "Color for all Markdown preview heading levels (h1-h6)."
-                },
-                "xlsxViewer.md.externalResourceRoots": {
-                    "type": "array",
-                    "scope": "machine",
-                    "items": {
-                        "type": "string"
-                    },
-                    "default": [],
-                    "description": "Absolute trusted directories for Markdown images outside the workspace. Symlink targets are checked after realpath resolution."
-                },
-                "xlsxViewer.md.allowRemoteImages": {
-                    "type": "boolean",
-                    "scope": "machine",
-                    "default": false,
-                    "description": "允许 Markdown 预览请求 HTTPS 远程图片；可能向图片服务器暴露 IP 与打开文档的时间。"
                 },
                 "xlsxViewer.md.previewBackgroundColor": {
                     "type": "string",
@@ -449,6 +421,33 @@
                     "scope": "machine",
                     "default": true,
                     "description": "监听外置主题 CSS 和 manifest 的变更，保存后自动刷新所有已打开的 Markdown 预览。"
+                },
+                "xlsxViewer.md.externalResourceRoots": {
+                    "type": "array",
+                    "scope": "machine",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "允许 Markdown 引用的工作区外图片目录绝对路径；会检查符号链接目标。"
+                },
+                "xlsxViewer.md.allowRemoteImages": {
+                    "type": "boolean",
+                    "scope": "machine",
+                    "default": false,
+                    "description": "允许 Markdown 预览请求 HTTPS 远程图片；可能向图片服务器暴露 IP 与打开文档的时间。"
+                },
+                "xlsxViewer.md.showLineNumbers": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show line numbers in code blocks."
+                },
+                "xlsxViewer.md.textSize": {
+                    "type": "number",
+                    "default": 100,
+                    "minimum": 50,
+                    "maximum": 300,
+                    "description": "Text size percentage for Markdown preview and editor (default: 100%)."
                 }
             }
         },
@@ -478,13 +477,10 @@
         "check-types": "tsc --noEmit",
         "lint": "eslint src/**/*.ts",
         "test": "vscode-test",
-        "verify:local-patch": "node scripts/verify-local-patch.mjs",
         "theme:build": "npm --prefix themes/markdown-theme run build",
         "theme:watch": "npm --prefix themes/markdown-theme run watch",
         "theme:audit": "npm --prefix themes/markdown-theme run audit",
-        "verify:theme-system": "node scripts/verify-theme-system.mjs",
-        "verify:docs": "node scripts/verify-docs.mjs",
-        "verify:security": "npm run compile-tests && node scripts/verify-security.mjs"
+        "test:local": "npm run compile-tests && mocha --ui tdd out/test/previewEditSafety.test.js out/test/spreadsheetRenderSafety.test.js out/test/webviewMessageSchema.test.js out/test/mdToolbarStorage.test.js out/test/mdToolbarLayout.test.js out/test/anchorNavigation.test.js && node scripts/test-md-history.cjs && node scripts/test-md-theme.cjs && node scripts/test-tabular-safety.cjs && node scripts/test-spreadsheet-provider.cjs"
     },
     "devDependencies": {
         "@types/mocha": "^8.2.2",
@@ -498,8 +494,7 @@
         "mocha": "^11.7.5",
         "npm-run-all": "^4.1.5",
         "typescript": "^5.4.5",
-        "@vscode/test-cli": "^0.0.15",
-        "@vscode/test-electron": "^3.1.0"
+        "vscode-test": "^1.5.2"
     },
     "dependencies": {
         "@types/highlight.js": "^9.12.4",
@@ -521,17 +516,10 @@
         "markdown-it-sub": "^2.0.0",
         "markdown-it-sup": "^2.0.0",
         "markdown-it-task-lists": "^2.1.1",
-        "mermaid": "^11.17.2",
+        "mermaid": "^11.4.0",
         "turndown": "^7.2.2",
         "turndown-plugin-gfm": "^1.0.2"
     },
     "license": "MIT",
-    "icon": "icon.png",
-    "overrides": {
-        "diff": "^8.0.4",
-        "serialize-javascript": "^7.0.6",
-        "exceljs": {
-            "uuid": "^11.1.1"
-        }
-    }
+    "icon": "icon.png"
 }
