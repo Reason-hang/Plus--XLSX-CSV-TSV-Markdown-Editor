@@ -134,6 +134,16 @@ async function scenario(kind) {
             assert.ok(sent.some(message => message.command === 'versionRestoredMd'));
             if (kind === 'legacy') assert.ok(await fs.promises.stat(legacyFile));
         }
+        if (kind === 'snapshot') {
+            await receive({ command: 'saveMarkdown', text: '自动保存的新内容', silent: true });
+            assert.strictEqual(await fs.promises.readFile(documentPath, 'utf8'), '自动保存的新内容');
+            assert.ok(sent.some(message => message.command === 'saveResult' && message.ok && message.silent));
+
+            await fs.promises.writeFile(documentPath, '其他程序修改的内容');
+            await receive({ command: 'saveMarkdown', text: '不得覆盖的草稿', silent: true });
+            assert.strictEqual(await fs.promises.readFile(documentPath, 'utf8'), '其他程序修改的内容');
+            assert.ok(sent.some(message => message.command === 'saveResult' && !message.ok && /外部修改/.test(message.error)));
+        }
         provider.dispose();
     } finally {
         await fs.promises.rm(root, { recursive: true, force: true });
@@ -142,5 +152,5 @@ async function scenario(kind) {
 
 (async () => {
     for (const kind of ['snapshot', 'legacy', 'corrupt']) await scenario(kind);
-    console.log('Markdown Provider 测试：工具栏保存／重建恢复、旧历史迁移与损坏索引保护均通过。');
+    console.log('Markdown Provider 测试：工具栏布局、旧历史、自动保存落盘和外部修改保护均通过。');
 })().catch(error => { console.error(error); process.exitCode = 1; });
