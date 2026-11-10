@@ -430,6 +430,7 @@ let autoSaveTimer: any = null;
 let lastSaveContent = '';
 let previewEditBaselineHtml: string | null = null;
 let previewEditBaselineMarkdown: string | null = null;
+let previewEditSource = '';
 let pendingSavedPreviewHtml: string | null = null;
 
 const MIN_TEXT_SIZE = 70;
@@ -1500,6 +1501,13 @@ function hasUnsafeSplitTabs(source: string): boolean {
 // ===== Edit Mode (Split View) =====
 function setEditMode(enabled: boolean) {
     if (enabled && (isVersionPreviewMode || isSaving)) return;
+    if (enabled && isEditMode && !isPreviewEditMode) return;
+    const wasEditing = isEditMode;
+    if (enabled && isPreviewEditMode) {
+        const draft = getPreviewEditDraft();
+        if (draft === null) return;
+        currentContent = draft;
+    }
     isEditMode = enabled;
     isPreviewEditMode = false;
     document.body.classList.toggle('edit-mode', enabled);
@@ -1515,11 +1523,8 @@ function setEditMode(enabled: boolean) {
 
     const saveTarget = (saveBtn?.closest('.tooltip') as HTMLElement | null) || saveBtn;
     const cancelTarget = (cancelBtn?.closest('.tooltip') as HTMLElement | null) || cancelBtn;
-    const editTarget = (editBtn?.closest('.tooltip') as HTMLElement | null) || editBtn;
-    const previewEditTarget = (previewEditBtn?.closest('.tooltip') as HTMLElement | null) || previewEditBtn;
-
-    if (editTarget) editTarget.classList.toggle('hidden', enabled);
-    if (previewEditTarget) previewEditTarget.classList.toggle('hidden', enabled);
+    editBtn?.setAttribute('aria-pressed', String(enabled));
+    previewEditBtn?.setAttribute('aria-pressed', 'false');
 
     if (saveTarget) saveTarget.classList.toggle('hidden', !enabled);
     if (cancelTarget) cancelTarget.classList.toggle('hidden', !enabled);
@@ -1533,7 +1538,7 @@ function setEditMode(enabled: boolean) {
     if (preview) preview.contentEditable = 'false';
 
     if (enabled) {
-        originalContent = currentContent;
+        if (!wasEditing) originalContent = currentContent;
         activePane = 'editor';
 
         container?.classList.add('split-view');
@@ -1627,7 +1632,7 @@ function hasUnsavedMarkdownEdits(): boolean {
     if (!isEditMode) return currentContent !== originalContent;
     if (isPreviewEditMode) {
         const preview = $('markdownPreview');
-        return !!preview && getPreviewEditHtml(preview) !== previewEditBaselineHtml;
+        return currentContent !== originalContent || (!!preview && getPreviewEditHtml(preview) !== previewEditBaselineHtml);
     }
     const editor = $('markdownEditor') as HTMLTextAreaElement | null;
     return !!editor && editor.value !== originalContent;
@@ -1635,6 +1640,12 @@ function hasUnsavedMarkdownEdits(): boolean {
 
 function setPreviewEditMode(enabled: boolean) {
     if (enabled && (isVersionPreviewMode || isSaving)) return;
+    if (enabled && isEditMode && isPreviewEditMode) return;
+    const wasEditing = isEditMode;
+    if (enabled && isEditMode) {
+        if (!pushPreviewEditsToEditor()) return;
+        flushLivePreviewRender();
+    }
     isPreviewEditMode = enabled;
     isEditMode = enabled;
     document.body.classList.toggle('edit-mode', enabled);
@@ -1649,11 +1660,8 @@ function setPreviewEditMode(enabled: boolean) {
 
     const saveTarget = (saveBtn?.closest('.tooltip') as HTMLElement | null) || saveBtn;
     const cancelTarget = (cancelBtn?.closest('.tooltip') as HTMLElement | null) || cancelBtn;
-    const editTarget = (editBtn?.closest('.tooltip') as HTMLElement | null) || editBtn;
-    const previewEditTarget = (previewEditBtn?.closest('.tooltip') as HTMLElement | null) || previewEditBtn;
-
-    if (editTarget) editTarget.classList.toggle('hidden', enabled);
-    if (previewEditTarget) previewEditTarget.classList.toggle('hidden', enabled);
+    editBtn?.setAttribute('aria-pressed', 'false');
+    previewEditBtn?.setAttribute('aria-pressed', String(enabled));
 
     if (saveTarget) saveTarget.classList.toggle('hidden', !enabled);
     if (cancelTarget) cancelTarget.classList.toggle('hidden', !enabled);
@@ -1664,7 +1672,8 @@ function setPreviewEditMode(enabled: boolean) {
     updateFormattingToolbarHeight();
 
     if (enabled) {
-        originalContent = currentContent;
+        if (!wasEditing) originalContent = currentContent;
+        previewEditSource = currentContent;
 
         container?.classList.remove('split-view');
         container?.classList.add('preview-edit');
@@ -1852,6 +1861,22 @@ function previewToMarkdown(): string {
     return turndownService.turndown(clone.innerHTML);
 }
 
+function getPreviewEditDraft(): string | null {
+    const preview = $('markdownPreview');
+    if (!preview || previewEditBaselineHtml === null || previewEditBaselineMarkdown === null) {
+        showToast('预览编辑状态尚未就绪，请稍后重试。');
+        return null;
+    }
+    const html = getPreviewEditHtml(preview);
+    if (html === previewEditBaselineHtml) return previewEditSource;
+    const trailingNewlines = getPreviewEditTrailingNewlines(previewEditSource, previewEditBaselineMarkdown);
+    if (hasUnsafePreviewEditSource(previewEditSource) || trailingNewlines === null || /<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(html)) {
+        showToast('此文档无法在预览编辑中保真转换，请保留当前内容。');
+        return null;
+    }
+    return turndownService.turndown(html) + trailingNewlines;
+}
+
 // Split Edit: schedule pushing rendered-side edits into the markdown textarea
 function schedulePreviewToEditorSync() {
     if (!isEditMode || isPreviewEditMode) {
@@ -1916,21 +1941,10 @@ function performSave(exitAfterSave = false, silent = false) {
     let previewHtml: string | null = null;
     if (isPreviewEditMode) {
         const preview = $('markdownPreview');
-        if (!preview || previewEditBaselineHtml === null || previewEditBaselineMarkdown === null) {
-            showToast('预览编辑状态尚未就绪，请改用分栏编辑。');
-            return;
-        }
+        if (!preview) return;
         previewHtml = getPreviewEditHtml(preview);
-        if (previewHtml === previewEditBaselineHtml) {
-            previewMarkdown = originalContent;
-        } else {
-            const trailingNewlines = getPreviewEditTrailingNewlines(originalContent, previewEditBaselineMarkdown);
-            if (hasUnsafePreviewEditSource(originalContent) || trailingNewlines === null || /<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(previewHtml)) {
-                showToast('此文档无法在预览编辑中保真保存，请改用分栏编辑。');
-                return;
-            }
-            previewMarkdown = turndownService.turndown(previewHtml) + trailingNewlines;
-        }
+        previewMarkdown = getPreviewEditDraft();
+        if (previewMarkdown === null) return;
     }
     isSaving = true;
     shouldExitEditMode = exitAfterSave;
@@ -1971,7 +1985,7 @@ function scheduleMarkdownAutoSave() {
         autoSaveTimer = null;
         if (isSaving) { scheduleMarkdownAutoSave(); return; }
         const preview = $('markdownPreview');
-        if (isPreviewEditMode ? !!preview && getPreviewEditHtml(preview) !== previewEditBaselineHtml : currentContent !== originalContent) performSave(false, true);
+        if (isPreviewEditMode ? currentContent !== originalContent || (!!preview && getPreviewEditHtml(preview) !== previewEditBaselineHtml) : currentContent !== originalContent) performSave(false, true);
     }, delay);
 }
 
@@ -3483,6 +3497,7 @@ window.addEventListener('message', (event) => {
 
             currentContent = m.content || '';
             originalContent = currentContent;
+            previewEditSource = currentContent;
             lastSaveContent = currentContent;
             documentUri = m.documentUri || '';
             documentDirUri = m.documentDirUri || '';
@@ -3527,6 +3542,7 @@ window.addEventListener('message', (event) => {
                 }
                 originalContent = lastSaveContent;
                 if (isPreviewEditMode && pendingSavedPreviewHtml !== null) {
+                    previewEditSource = lastSaveContent;
                     previewEditBaselineHtml = pendingSavedPreviewHtml;
                     previewEditBaselineMarkdown = turndownService.turndown(pendingSavedPreviewHtml);
                     pendingSavedPreviewHtml = null;

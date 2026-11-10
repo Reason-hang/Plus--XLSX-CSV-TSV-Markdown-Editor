@@ -60,18 +60,21 @@ body.edit-mode #content {
     flex-shrink: 0;
 }
 
-.toggle-button.active {
+.toggle-button.active,
+.toggle-button[aria-pressed="true"] {
     background-color: var(--accent-bg);
     border: 1px solid var(--accent-color);
     box-shadow: 0 0 0 1px var(--accent-bg);
     color: var(--accent-color);
 }
 
-.toggle-button.active .btn-label {
+.toggle-button.active .btn-label,
+.toggle-button[aria-pressed="true"] .btn-label {
     color: var(--accent-color);
 }
 
-.toggle-button.active svg {
+.toggle-button.active svg,
+.toggle-button[aria-pressed="true"] svg {
     stroke: var(--accent-color);
 }
 

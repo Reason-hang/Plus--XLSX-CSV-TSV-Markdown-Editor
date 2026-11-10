@@ -1,6 +1,6 @@
 # XLSX、CSV、TSV 与 Markdown 编辑器
 
-本项目是基于原作者扩展的个人维护版本，支持在兼容 VS Code 扩展的 IDE 中查看和编辑 XLSX、CSV、TSV 与 Markdown。当前源码候选版本为 `2.0.9-local.5`，以上游 `v2.0.9` 为基线，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`。
+本项目是基于原作者扩展的个人维护版本，支持在兼容 VS Code 扩展的 IDE 中查看和编辑 XLSX、CSV、TSV 与 Markdown。当前源码候选版本为 `2.0.9-local.6`，以上游 `v2.0.9` 为基线，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`。
 
 分屏支持直接编辑 Markdown 预览；可安全往返的含代码块文档允许编辑正文，代码块本身请在源码侧编辑。当原文不能安全往返转换时，预览侧会限制编辑，请使用源码侧保护原文。
 
@@ -19,7 +19,7 @@
 
 1. 在 IDE 中通过本插件打开 `.xlsx`、`.csv`、`.tsv` 或 `.md` 文件。
 2. 表格可进入编辑模式、使用工具栏处理单元格；历史按钮用于查看和恢复已有快照。
-3. Markdown 可选择“分屏编辑”或“所见即所得”。预览编辑在检测到原文无法安全往返时会拒绝保存，请改用分屏编辑。
+3. Markdown 可选择“分屏编辑”或“所见即所得”，编辑时可用工具栏直接切换；如按钮被自定义隐藏，可在齿轮中的“自定义工具栏”恢复。预览编辑在检测到原文无法安全往返时会保留草稿并拒绝转换或保存。
 4. 在 Markdown 右上角齿轮中可调整自动保存、外观和工具栏布局。上游返回顶部按钮在文档向下滚动后显示。
 5. 工作区外的本地图片需将可信目录加入 `xlsxViewer.md.externalResourceRoots`；远程 HTTPS 图片默认关闭，可通过 `xlsxViewer.md.allowRemoteImages` 显式允许。
 
