@@ -1873,8 +1873,8 @@ function pushPreviewEditsToEditor(): boolean {
 
 function performSave(exitAfterSave = false, silent = false) {
     if (isSaving || !isEditMode || isVersionPreviewMode) return;
-    flushLivePreviewRender();
     if (!pushPreviewEditsToEditor()) return;
+    flushLivePreviewRender();
     let previewMarkdown: string | null = null;
     let previewHtml: string | null = null;
     if (isPreviewEditMode) {
