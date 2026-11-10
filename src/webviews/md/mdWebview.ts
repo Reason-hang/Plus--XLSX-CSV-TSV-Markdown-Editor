@@ -883,6 +883,7 @@ md.renderer.rules.image = function (tokens: any, idx: number, options: any, env:
     tokens[idx].attrSet('loading', 'lazy');
     const src = (tokens[idx].attrGet('src') || '').trim();
     if (shouldResolveLocalImage(src)) {
+        tokens[idx].attrSet('data-md-original-src', src);
         const resolved = resolvedImageUriCache.get(src) || resolvedImageUriCache.get(decodeURIComponentSafe(src));
         if (resolved) {
             tokens[idx].attrSet('src', resolved);
@@ -953,6 +954,8 @@ function executeLocalImageResolution() {
         if (!trimmed || !shouldResolveLocalImage(trimmed)) {
             return;
         }
+
+        if (!node.hasAttribute('data-md-original-src')) node.setAttribute('data-md-original-src', trimmed);
 
         const cached = resolvedImageUriCache.get(trimmed) || resolvedImageUriCache.get(decodeURIComponentSafe(trimmed));
         if (cached) {
@@ -1367,6 +1370,7 @@ function sanitizeRenderedMarkdownHtml(html: string): string {
                 const source = attribute.value.trim();
                 if (!/^[a-z][a-z0-9+.-]*:/i.test(source) || /^file:\/\//i.test(source) || /^[a-z]:[/\\]/i.test(source)) {
                     if (!element.hasAttribute('data-md-src')) element.setAttribute('data-md-src', source);
+                    if (!element.hasAttribute('data-md-original-src')) element.setAttribute('data-md-original-src', source);
                 }
                 // Local images are loaded only after the host checks their real path.
                 element.removeAttribute(attribute.name);
@@ -1599,8 +1603,18 @@ function setEditMode(enabled: boolean) {
 }
 
 // ===== Preview Edit Mode (WYSIWYG) =====
+function restoreMarkdownImageSources(root: HTMLElement): void {
+    root.querySelectorAll('img').forEach(node => {
+        const source = node.getAttribute('data-md-original-src') || node.getAttribute('data-md-src');
+        if (source !== null) node.setAttribute('src', source);
+        node.removeAttribute('data-md-src');
+        node.removeAttribute('data-md-original-src');
+    });
+}
+
 function getPreviewEditHtml(preview: HTMLElement): string {
     const clone = preview.cloneNode(true) as HTMLElement;
+    restoreMarkdownImageSources(clone);
     clone.querySelectorAll('.table-hover-tools, .heading-anchor, .code-block-header, .code-copy').forEach(node => node.remove());
     clone.querySelectorAll('td, th').forEach(cellNode => {
         const cell = cellNode as HTMLTableCellElement;
@@ -1824,6 +1838,7 @@ function previewToMarkdown(): string {
     });
 
     const clone = preview.cloneNode(true) as HTMLElement;
+    restoreMarkdownImageSources(clone);
     clone.querySelectorAll('.table-hover-tools').forEach(node => node.remove());
     clone.querySelectorAll('.heading-anchor').forEach(node => node.remove());
     clone.querySelectorAll('.code-block-header').forEach(node => node.remove());
