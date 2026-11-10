@@ -1,0 +1,82 @@
+// Real built webview + real provider + disposable file; only VS Code APIs are mocked.
+const { JSDOM, VirtualConsole } = require('jsdom');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const Module = require('module');
+const { pathToFileURL, fileURLToPath } = require('url');
+const root = path.resolve(__dirname, '..');
+const uri = filePath => ({ fsPath: filePath, scheme: 'file', toString: () => pathToFileURL(filePath).href });
+const disposable = { dispose() {} };
+const api = {
+    Uri: { file: uri, parse: value => uri(fileURLToPath(value)), joinPath: (base, ...parts) => uri(path.join(base.fsPath, ...parts)) },
+    RelativePattern: class {},
+    EventEmitter: class { constructor() { this.event = () => disposable; } fire() {} dispose() {} },
+    QuickPickItemKind: { Separator: -1 }, env: { language: 'zh-cn' },
+    workspace: { workspaceFolders: [], getWorkspaceFolder: () => undefined, getConfiguration: () => ({ get: (_key, fallback) => fallback }), asRelativePath: value => value.fsPath, onDidChangeConfiguration: () => disposable, createFileSystemWatcher: () => ({ onDidChange: () => disposable, dispose() {} }) },
+    window: { createOutputChannel: () => ({ appendLine() {}, show() {}, dispose() {} }), onDidChangeActiveColorTheme: () => disposable, activeColorTheme: { kind: 1 }, showErrorMessage: message => { throw Error(message); } }
+};
+const originalLoad = Module._load;
+Module._load = function(request, ...args) { return request === 'vscode' ? api : originalLoad.call(this, request, ...args); };
+const { MDEditorProvider } = require('../out/mdEditorProvider');
+Module._load = originalLoad;
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+(async () => {
+    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'md-split-persist-'));
+    let provider, dom;
+    try {
+        const file = path.join(dir, 'sample.md');
+        const initial = 'before\n\n![alt](./images/pic.png)\n\n```js\nconst a=1;\n```\n';
+        await fs.promises.writeFile(file, initial);
+        await fs.promises.mkdir(path.join(dir, 'images'));
+        await fs.promises.writeFile(path.join(dir, 'images', 'pic.png'), 'fixture');
+        const providerSource = fs.readFileSync(path.join(root, 'src/mdEditorProvider.ts'), 'utf8');
+        const template = providerSource.match(/return `\s*(<!DOCTYPE html>[\s\S]*?<\/html>)`;/)?.[1];
+        if (!template) throw Error('Provider template missing');
+        const html = template.replace(/\$\{\w+\}/g, '').replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, '');
+        const errors = [], messages = [];
+        const vc = new VirtualConsole(); vc.on('jsdomError', error => errors.push(error.message));
+        dom = new JSDOM(html, { url: 'http://localhost/', runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc });
+        const w = dom.window;
+        w.TextEncoder = TextEncoder; w.TextDecoder = TextDecoder;
+        w.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+        w.IntersectionObserver = class { observe() {} unobserve() {} disconnect() {} };
+        w.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }); w.scrollTo = () => {};
+        let receive;
+        const webview = { options: {}, postMessage: async message => { messages.push(message); w.postMessage(message, '*'); }, onDidReceiveMessage: handler => { receive = handler; }, asWebviewUri: value => value };
+        const panel = { webview, onDidDispose() {} };
+        const values = new Map();
+        const context = { globalState: { get: key => values.get(key), update: async (key, value) => values.set(key, value) }, globalStorageUri: uri(path.join(dir, 'storage')), extensionUri: uri(root) };
+        provider = new MDEditorProvider(context); provider.getWebviewContent = () => '';
+        await provider.resolveCustomEditor({ uri: uri(file) }, panel, {});
+        w.acquireVsCodeApi = () => ({ postMessage: message => { Promise.resolve(receive(message)).catch(error => errors.push(String(error))); }, getState: () => ({}), setState: () => {} });
+        w.eval(fs.readFileSync(path.join(root, 'dist/md/mdWebview.js'), 'utf8'));
+        await wait(250);
+        w.document.getElementById('toggleEditModeButton').click(); await wait(100);
+        const preview = w.document.getElementById('markdownPreview');
+        if (preview.contentEditable !== 'true') throw Error('fenced sample is not editable');
+        preview.querySelector('p').textContent = 'changed';
+        preview.querySelector('p').dispatchEvent(new w.Event('input', { bubbles: true }));
+        w.document.getElementById('saveEditsButton').click();
+        for (let i=0; i<30 && !messages.some(m => m.command === 'saveResult'); i++) await wait(50);
+        const result = messages.find(m => m.command === 'saveResult');
+        const actual = await fs.promises.readFile(file, 'utf8');
+        if (!result?.ok || actual !== initial.replace('before', 'changed')) throw Error('Real provider did not preserve the fenced file: ' + JSON.stringify({ result, actual }));
+        await wait(100);
+        w.document.getElementById('toggleEditModeButton').click(); await wait(100);
+        preview.querySelector('p').textContent = 'unsaved draft';
+        preview.querySelector('p').dispatchEvent(new w.Event('input', { bubbles: true }));
+        await fs.promises.writeFile(file, 'external change\n');
+        w.document.getElementById('saveEditsButton').click();
+        for (let i=0; i<30 && messages.filter(m => m.command === 'saveResult').length < 2; i++) await wait(50);
+        const second = messages.filter(m => m.command === 'saveResult').at(-1);
+        if (second?.ok !== false || await fs.promises.readFile(file, 'utf8') !== 'external change\n') throw Error('External change was not protected');
+        if (!w.document.getElementById('markdownEditor').value.startsWith('unsaved draft')) throw Error('Draft was lost after external-change rejection');
+        if (errors.length) throw Error(errors.join('; '));
+        console.log('Markdown 分屏落盘模拟通过：实际 Webview 和 Provider 协作，图片路径及代码块保留，外部修改冲突时保留草稿。');
+    } finally {
+        if (provider) provider.dispose();
+        if (dom) dom.window.close();
+        await fs.promises.rm(dir, { recursive: true, force: true });
+    }
+})().catch(error => { console.error(error); process.exitCode = 1; });
