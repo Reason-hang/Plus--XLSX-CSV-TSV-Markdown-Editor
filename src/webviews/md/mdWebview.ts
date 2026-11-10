@@ -1523,6 +1523,9 @@ function setEditMode(enabled: boolean) {
         }
 
         if (editor) editor.value = currentContent;
+        // Re-render after entering split mode so the preview's safety baseline
+        // and editability are initialized even before the first source edit.
+        renderMarkdown(currentContent);
 
         // Cache line height and lock outer scroll after entering edit mode
         requestAnimationFrame(() => {
