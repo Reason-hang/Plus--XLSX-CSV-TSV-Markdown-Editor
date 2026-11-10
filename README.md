@@ -1,6 +1,6 @@
 # XLSX、CSV、TSV 与 Markdown 编辑器
 
-本项目是基于原作者扩展的个人维护版本，支持在兼容 VS Code 扩展的 IDE 中查看和编辑 XLSX、CSV、TSV 与 Markdown。当前源码候选版本为 `2.0.9-local.4`，以上游 `v2.0.9` 为基线，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`。
+本项目是基于原作者扩展的个人维护版本，支持在兼容 VS Code 扩展的 IDE 中查看和编辑 XLSX、CSV、TSV 与 Markdown。当前源码候选版本为 `2.0.9-local.5`，以上游 `v2.0.9` 为基线，扩展 ID 仍为 `muhammad-ahmad.xlsx-viewer`。
 
 分屏支持直接编辑 Markdown 预览；可安全往返的含代码块文档允许编辑正文，代码块本身请在源码侧编辑。当原文不能安全往返转换时，预览侧会限制编辑，请使用源码侧保护原文。
 

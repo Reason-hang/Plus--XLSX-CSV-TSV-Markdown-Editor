@@ -5323,34 +5323,22 @@ function wireEditor() {
 }
 
 // ===== Preview Interactions =====
-function toggleTaskListItemByIndex(index: number, isChecked: boolean) {
+function toggleTaskListItemByIndex(index: number, isChecked: boolean, renderedCount: number): boolean {
     const editor = $('markdownEditor') as HTMLTextAreaElement | null;
     const source = (isEditMode && !isPreviewEditMode && editor) ? editor.value : currentContent;
     const lines = source.split('\n');
-    let taskIndex = 0;
-    let found = false;
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const match = line.match(/^([ \t>]*(?:[-*+]|\d+\.)[ \t]+\[)([ xX])(\](?:[ \t]+.*)?)$/);
-        if (match) {
-            if (taskIndex === index) {
-                const newMark = isChecked ? 'x' : ' ';
-                lines[i] = `${match[1]}${newMark}${match[3]}`;
-                found = true;
-                break;
-            }
-            taskIndex++;
-        }
-    }
-
-    if (found) {
-        currentContent = lines.join('\n');
-        if (editor && editor.value !== currentContent) {
-            editor.value = currentContent;
-        }
-        updateStatusInfo();
-    }
+    const taskLines = md.parse(source, {}).filter(token => token.type === 'inline' && token.map &&
+        token.children?.[0]?.type === 'html_inline' && token.children[0].content.includes('class="task-list-item-checkbox"'))
+        .map(token => token.map![0]);
+    if (taskLines.length !== renderedCount || index < 0 || index >= taskLines.length) return false;
+    const lineIndex = taskLines[index];
+    const match = lines[lineIndex]?.match(/^([ \t>]*(?:[-*+]|\d+\.)[ \t]+\[)([ xX])(\](?:[ \t]+.*)?)$/);
+    if (!match) return false;
+    lines[lineIndex] = `${match[1]}${isChecked ? 'x' : ' '}${match[3]}`;
+    currentContent = lines.join('\n');
+    if (editor && editor.value !== currentContent) editor.value = currentContent;
+    updateStatusInfo();
+    return true;
 }
 
 function wirePreviewInteractions() {
@@ -5387,8 +5375,13 @@ function wirePreviewInteractions() {
 
         const allCheckboxes = Array.from(preview.querySelectorAll('input.task-list-item-checkbox'));
         const index = allCheckboxes.indexOf(checkbox);
-        if (index >= 0) {
-            toggleTaskListItemByIndex(index, checkbox.checked);
+        if (isEditMode && !pushPreviewEditsToEditor()) {
+            checkbox.checked = !checkbox.checked;
+            return;
+        }
+        if (!toggleTaskListItemByIndex(index, checkbox.checked, allCheckboxes.length)) {
+            checkbox.checked = !checkbox.checked;
+            showToast('无法可靠定位待办项，请在源码中修改。');
         }
     });
 
