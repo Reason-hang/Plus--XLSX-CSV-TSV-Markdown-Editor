@@ -1,5 +1,20 @@
 # Changelog
 
+## v2.0.9-local.1（候选）
+
+- 合入上游 v2.0.8 的表格保存批次和 v2.0.9 的 Markdown 分屏预览编辑。
+- 保留个人工具栏布局与安全保存；对于不能安全转换的 Markdown，预览侧退回源码编辑。
+- 表格粘贴走统一保存队列，并在存在待保存修改时延迟整表刷新。
+- 自动化与真实 IDE 验收分别记录；候选版本不代表已完成真实宿主验收。
+
+## v2.0.9 - WYSIWYG Split Editing
+- You can now edit the formatted Markdown preview directly while using split view.
+- Changes made on either side stay in sync.
+
+## v2.0.8 - Spreadsheet Editing & Save Reliability
+- Improved spreadsheet cell editing for long text by preserving line breaks and allowing content to remain fully visible while editing.
+- Improved save reliability by tracking save requests and matching responses to the originating edit, including autosave operations.
+
 ## v2.0.7-local.1（候选）
 
 - 以上游 `v2.0.7` 为基线，迁入个人工具栏布局、Markdown 外观与主题、安全保存和历史能力；自研与上游归属见自研差异台账。

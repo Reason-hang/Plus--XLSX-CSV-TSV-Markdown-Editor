@@ -858,7 +858,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             }
         };
 
-        const saveDelimitedFileAndStyles = async (sourceType: TabularFileType, edits: any[], richEdits: any[], styleEdits: any[], operations: any[], isAutosave: boolean) => {
+        const saveDelimitedFileAndStyles = async (sourceType: TabularFileType, edits: any[], richEdits: any[], styleEdits: any[], operations: any[], isAutosave: boolean, saveRequestId?: any) => {
             const requiresWorkbookRefresh = edits.length > 0 || operations.length > 0 || styleEdits.length > 0 || richEdits.length > 0;
             await assertFileUnchanged();
             const { workbook: tabularData } = await readTabularFile(document.uri.fsPath, sourceType);
@@ -1048,7 +1048,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             }
 
             try {
-                webview.postMessage({ command: 'saveResult', ok: true, isAutosave });
+                webview.postMessage({ command: 'saveResult', ok: true, isAutosave, saveRequestId });
                 for (const message of saveWarnings) webview.postMessage({ command: 'saveWarning', message });
             } catch {
                 // ignore
@@ -1965,15 +1965,16 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             }
 
             if (message?.command === 'saveXlsxEdits') {
+                const saveRequestId = message?.saveRequestId;
                 if (isSaving) {
-                    webview.postMessage({ command: 'saveResult', ok: false, isAutosave: !!message.isAutosave, error: '另一次保存仍在进行，请稍后重试。' });
+                    webview.postMessage({ command: 'saveResult', ok: false, isAutosave: !!message.isAutosave, saveRequestId, error: '另一次保存仍在进行，请稍后重试。' });
                     return;
                 }
                 try {
                     isSaving = true;
                     if (requiresReopenAfterSave) throw new Error('上次保存后刷新失败，请重新打开文件再编辑。');
                     if (previewVersionId) {
-                        webview.postMessage({ command: 'saveResult', ok: false, error: 'Preview mode is read-only' });
+                        webview.postMessage({ command: 'saveResult', ok: false, error: 'Preview mode is read-only', saveRequestId });
                         return;
                     }
 
@@ -1985,13 +1986,13 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     const isAutosave = !!message.isAutosave;
 
                     if (!edits.length && !operations.length && !styleEdits.length && !richEdits.length) {
-                        try { webview.postMessage({ command: 'saveResult', ok: true, isAutosave }); } catch { }
+                        try { webview.postMessage({ command: 'saveResult', ok: true, isAutosave, saveRequestId }); } catch { }
                         return;
                     }
 
                     const sourceType = detectTabularFileType(document.uri.fsPath) || 'xlsx';
                     if (sourceType === 'csv' || sourceType === 'tsv') {
-                        await saveDelimitedFileAndStyles(sourceType, edits, richEdits, styleEdits, operations, isAutosave);
+                        await saveDelimitedFileAndStyles(sourceType, edits, richEdits, styleEdits, operations, isAutosave, saveRequestId);
                         return;
                     }
 
@@ -2488,10 +2489,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                         requiresReopenAfterSave = true;
                         saveWarnings.push(`文件已保存，但界面刷新失败。请重新打开文件后继续编辑：${String(error)}`);
                     }
-                    try { webview.postMessage({ command: 'saveResult', ok: true, isAutosave }); } catch { }
+                    try { webview.postMessage({ command: 'saveResult', ok: true, isAutosave, saveRequestId }); } catch { }
                     for (const message of saveWarnings) webview.postMessage({ command: 'saveWarning', message });
                 } catch (err) {
-                    try { webview.postMessage({ command: 'saveResult', ok: false, error: String(err), isAutosave: !!message?.isAutosave }); } catch { }
+                    try { webview.postMessage({ command: 'saveResult', ok: false, error: String(err), isAutosave: !!message?.isAutosave, saveRequestId }); } catch { }
                 } finally {
                     isSaving = false;
                 }

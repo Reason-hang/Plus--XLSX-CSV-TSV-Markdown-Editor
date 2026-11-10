@@ -2,7 +2,7 @@
     "name": "xlsx-viewer",
     "displayName": "XLSX, CSV, TSV & Markdown Editor",
     "description": "View and edit xlsx files with colors, fonts and styles (supporting in-table editing), and view and edit CSV, TSV & Markdown files in VS Code. This is an open-source project.",
-    "version": "2.0.7-local.1",
+    "version": "2.0.9-local.1",
     "publisher": "muhammad-ahmad",
     "engines": {
         "vscode": "^1.74.0"
@@ -480,7 +480,7 @@
         "theme:build": "npm --prefix themes/markdown-theme run build",
         "theme:watch": "npm --prefix themes/markdown-theme run watch",
         "theme:audit": "npm --prefix themes/markdown-theme run audit",
-        "test:local": "npm run compile-tests && mocha --ui tdd out/test/previewEditSafety.test.js out/test/spreadsheetRenderSafety.test.js out/test/webviewMessageSchema.test.js out/test/mdToolbarStorage.test.js out/test/mdToolbarLayout.test.js out/test/anchorNavigation.test.js && node scripts/test-md-history.cjs && node scripts/test-md-theme.cjs && node scripts/test-tabular-safety.cjs && node scripts/test-spreadsheet-provider.cjs"
+        "test:local": "npm run compile-tests && mocha --ui tdd out/test/previewEditSafety.test.js out/test/spreadsheetRenderSafety.test.js out/test/webviewMessageSchema.test.js out/test/mdToolbarStorage.test.js out/test/mdToolbarLayout.test.js out/test/anchorNavigation.test.js && node scripts/test-md-history.cjs && node scripts/test-md-theme.cjs && node scripts/test-tabular-safety.cjs && node scripts/test-spreadsheet-provider.cjs && node scripts/test-spreadsheet-save-race.cjs && node scripts/test-md-split-edit.cjs"
     },
     "devDependencies": {
         "@types/mocha": "^8.2.2",
