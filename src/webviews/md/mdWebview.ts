@@ -282,6 +282,8 @@ turndownService.addRule('mermaidBlock', {
     },
     replacement: (_content, node) => {
         const el = node as HTMLElement;
+        const rawFence = decodeStoredFenceCode(el.getAttribute('data-original-fence'));
+        if (rawFence !== null) return `\n\n${rawFence}\n\n`;
         const code = decodeStoredFenceCode(el.getAttribute('data-mermaid-code')) || el.textContent || '';
         const info = el.getAttribute('data-fence-info') || 'mermaid';
         return formatFencedMarkdown(info, code);
@@ -294,6 +296,8 @@ turndownService.addRule('fencedCodeBlockContainer', {
     },
     replacement: (_content, node) => {
         const el = node as HTMLElement;
+        const rawFence = decodeStoredFenceCode(el.getAttribute('data-original-fence'));
+        if (rawFence !== null) return `\n\n${rawFence}\n\n`;
         const info = el.getAttribute('data-fence-info') || '';
         const originalCode = decodeStoredFenceCode(el.getAttribute('data-code'));
 
@@ -1102,6 +1106,10 @@ function applyResolvedImageUris(resolved: Record<string, string>, requestedSourc
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 md.renderer.rules.fence = function (tokens: any, idx: number, options: any, env: any, self: any) {
     const token = tokens[idx];
+    const rawFence = typeof env.originalSource === 'string' && token.map
+        ? env.originalSource.split('\n').slice(token.map[0], token.map[1]).join('\n')
+        : null;
+    const rawFenceAttr = rawFence === null ? '' : ` data-original-fence="${escapeHtmlAttr(encodeURIComponent(rawFence))}"`;
     const info = token.info ? md.utils.unescapeAll(token.info).trim() : '';
     const langName = info ? info.split(/\s+/g)[0] : '';
     const code = token.content || '';
@@ -1111,7 +1119,7 @@ md.renderer.rules.fence = function (tokens: any, idx: number, options: any, env:
         const dataLine = token.map && token.level === 0 ? ` data-line="${token.map[0]}"` : '';
         const encoded = encodeURIComponent(code);
         const fenceInfo = info || 'mermaid';
-        return `<div class="mermaid"${dataLine} data-mermaid-code="${escapeHtmlAttr(encoded)}" data-fence-info="${escapeHtmlAttr(fenceInfo)}" contenteditable="false">${md.utils.escapeHtml(code)}</div>`;
+        return `<div class="mermaid"${dataLine}${rawFenceAttr} data-mermaid-code="${escapeHtmlAttr(encoded)}" data-fence-info="${escapeHtmlAttr(fenceInfo)}" contenteditable="false">${md.utils.escapeHtml(code)}</div>`;
     }
 
     let highlighted = '';
@@ -1135,7 +1143,7 @@ md.renderer.rules.fence = function (tokens: any, idx: number, options: any, env:
     // Wrap each line for line numbers
     const numberedCode = wrapCodeLines(highlighted);
 
-    return `<div class="code-block"${dataLine} data-code="${escapeHtmlAttr(encoded)}" data-fence-info="${escapeHtmlAttr(info)}"><div class="code-block-header" contenteditable="false">${langLabel}${copyButton}</div><pre><code${langClass}>${numberedCode}</code></pre></div>`;
+    return `<div class="code-block"${dataLine}${rawFenceAttr} data-code="${escapeHtmlAttr(encoded)}" data-fence-info="${escapeHtmlAttr(info)}" contenteditable="false"><div class="code-block-header" contenteditable="false">${langLabel}${copyButton}</div><pre><code${langClass}>${numberedCode}</code></pre></div>`;
 };
 
 function addHeadingIds(tokens: any[]) {
@@ -1386,7 +1394,7 @@ function renderMarkdown(content: string) {
         const isEditorFocused = !!editor && document.activeElement === editor;
         const savedScrollTop = preview.scrollTop;
         const savedScrollLeft = preview.scrollLeft;
-        const env: any = {};
+        const env: any = { originalSource: content || '' };
         const normalizedContent = sanitizeMarkdownCopyLinkArtifacts(content || '');
         const tokens = md.parse(normalizedContent, env);
         addHeadingIds(tokens);
@@ -1429,7 +1437,7 @@ function renderMarkdown(content: string) {
                 if (!isPreviewEditMode) {
                     const source = ($('markdownEditor') as HTMLTextAreaElement | null)?.value ?? currentContent;
                     const roundTrip = sanitizeMarkdownCopyLinkArtifacts(previewToMarkdown());
-                    splitPreviewTrailingNewlines = hasUnsafePreviewEditSource(source) || /<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(getPreviewEditHtml(preview))
+                    splitPreviewTrailingNewlines = hasUnsafeSplitTabs(source) || /<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(getPreviewEditHtml(preview))
                         ? null : getPreviewEditTrailingNewlines(source, roundTrip);
                     splitPreviewBaselineHtml = getPreviewEditHtml(preview);
                     preview.contentEditable = splitPreviewTrailingNewlines === null ? 'false' : 'true';
@@ -1472,6 +1480,17 @@ function updateFormattingToolbarHeight() {
     } else {
         document.documentElement.style.setProperty('--formatting-height', '0px');
     }
+}
+
+function hasUnsafeSplitTabs(source: string): boolean {
+    if (!source.includes('\t')) return false;
+    const fenceLines = new Set<number>();
+    for (const token of md.parse(source, {})) {
+        if (token.type === 'fence' && token.map) {
+            for (let line = token.map[0]; line < token.map[1]; line++) fenceLines.add(line);
+        }
+    }
+    return source.split('\n').some((line, index) => line.includes('\t') && !fenceLines.has(index));
 }
 
 // ===== Edit Mode (Split View) =====
