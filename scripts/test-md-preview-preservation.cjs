@@ -233,6 +233,24 @@ async function extraSample(file) {
         await wait(80);
         assert.strictEqual(ctx.w.document.getElementById('markdownEditor').value, source.replace(originalText, originalText + ' 测试修改'));
     } finally { ctx.dom.window.close(); }
+
+    for (const method of ['button', 'shortcut']) {
+        const saveContext = await create(source);
+        try {
+            const target = Array.from(saveContext.preview.querySelectorAll('[data-preview-source-key]'))
+                .find(node => node.textContent && source.indexOf(node.textContent) === source.lastIndexOf(node.textContent));
+            assert(target, `copied sample has no uniquely identifiable text for ${method}`);
+            const originalText = target.textContent;
+            edit(saveContext, target, originalText + ' 测试修改');
+            if (method === 'button') {
+                saveContext.w.document.getElementById('saveEditsButton').click();
+            } else {
+                target.dispatchEvent(new saveContext.w.KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true, cancelable: true }));
+            }
+            assert.strictEqual(saves(saveContext).length, 1, `${method} must send exactly one save request`);
+            assert.strictEqual(saves(saveContext)[0].text, source.replace(originalText, originalText + ' 测试修改'), `${method} must preserve all other sample bytes`);
+        } finally { saveContext.dom.window.close(); }
+    }
 }
 
 (async () => {
