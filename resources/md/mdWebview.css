@@ -1153,6 +1153,79 @@ body.edit-mode .markdown-preview .table-tool-btn[data-table-action="tableRemoveC
     stroke: var(--contrast-text);
 }
 
+.toast-notification.error .toast-icon-wrapper {
+    background-color: var(--vscode-errorForeground, #c43122);
+}
+
+.toast-notification.error .toast-text {
+    max-width: min(70vw, 620px);
+    white-space: normal;
+}
+
+#markdownPreview [data-preview-source-key] {
+    cursor: text;
+}
+
+#markdownPreview [data-preview-source-key]:focus {
+    outline: 1px solid var(--vscode-focusBorder, #007acc);
+    outline-offset: 2px;
+}
+
+.preview-source-notice {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 9px 12px;
+    border: 1px solid var(--vscode-editorWarning-foreground, #b7791f);
+    border-radius: 6px;
+    background: var(--vscode-editorWarning-background, var(--overlay-bg));
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.preview-source-notice button {
+    cursor: pointer;
+}
+
+#formattingToolbar button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.preview-draft-recovery {
+    display: none;
+    position: fixed;
+    z-index: 2100;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(680px, 90vw);
+    padding: 16px;
+    color: var(--text-color);
+    background: var(--bg-color);
+    border: 1px solid var(--vscode-errorForeground, #c43122);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+}
+
+.preview-draft-recovery.show {
+    display: block;
+}
+
+.preview-draft-recovery textarea {
+    box-sizing: border-box;
+    width: 100%;
+    height: 180px;
+    color: var(--text-color);
+    background: var(--vscode-input-background, transparent);
+}
+
+.preview-draft-recovery button {
+    margin-top: 8px;
+}
+
 .toast-text {
     font-size: 15px;
     font-weight: 500;

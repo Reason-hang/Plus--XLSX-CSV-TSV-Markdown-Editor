@@ -2,7 +2,7 @@
     "name": "xlsx-viewer",
     "displayName": "XLSX, CSV, TSV & Markdown Editor",
     "description": "View and edit xlsx files with colors, fonts and styles (supporting in-table editing), and view and edit CSV, TSV & Markdown files in VS Code. This is an open-source project.",
-    "version": "2.0.9-local.6",
+    "version": "2.0.9-local.7",
     "publisher": "muhammad-ahmad",
     "engines": {
         "vscode": "^1.74.0"
@@ -481,7 +481,7 @@
         "theme:watch": "npm --prefix themes/markdown-theme run watch",
         "theme:audit": "npm --prefix themes/markdown-theme run audit",
         "test:local": "npm run compile-tests && mocha --ui tdd out/test/previewEditSafety.test.js out/test/spreadsheetRenderSafety.test.js out/test/webviewMessageSchema.test.js out/test/mdToolbarStorage.test.js out/test/mdToolbarLayout.test.js out/test/anchorNavigation.test.js && node scripts/test-md-history.cjs && node scripts/test-md-theme.cjs && node scripts/test-tabular-safety.cjs && node scripts/test-spreadsheet-provider.cjs && node scripts/test-spreadsheet-save-race.cjs && node scripts/test-md-split-edit.cjs",
-        "test:md-split-dom": "npm run compile-tests && node esbuild.js --production && node scripts/test-md-split-dom.cjs && node scripts/test-md-split-persist.cjs",
+        "test:md-split-dom": "npm run compile-tests && node esbuild.js --production && node scripts/test-md-split-dom.cjs && node scripts/test-md-split-persist.cjs && node scripts/test-md-preview-preservation.cjs && node scripts/test-md-preview-persist.cjs",
         "test:spreadsheet-persist": "npm run compile-tests && node esbuild.js --production && node scripts/test-spreadsheet-save-persist.cjs"
     },
     "devDependencies": {
