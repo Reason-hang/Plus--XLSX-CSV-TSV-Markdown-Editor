@@ -650,7 +650,8 @@ function restorePreviewSnapshot(snapshot: string) {
 
     // In Split Edit, mirror the restored rendered side back into the markdown textarea
     if (!isPreviewEditMode) {
-        schedulePreviewToEditorSync();
+        if (previewSourceMapping) pushPreviewEditsToEditor();
+        else schedulePreviewToEditorSync();
     } else {
         scheduleMarkdownAutoSave();
     }
@@ -1454,8 +1455,15 @@ function renderMarkdown(content: string) {
                     const roundTrip = sanitizeMarkdownCopyLinkArtifacts(previewToMarkdown());
                     splitPreviewTrailingNewlines = hasUnsafeSplitTabs(source) || /<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(getPreviewEditHtml(preview))
                         ? null : getPreviewEditTrailingNewlines(source, roundTrip);
+                    if (splitPreviewTrailingNewlines === null) {
+                        // Preserve the original source and allow only text with a reliable source range.
+                        configurePreviewEditing(preview, splitEditorSource, true);
+                    } else {
+                        previewSourceMapping = null;
+                        setMappedFormattingAvailability(false);
+                        preview.contentEditable = 'true';
+                    }
                     splitPreviewBaselineHtml = getPreviewEditHtml(preview);
-                    preview.contentEditable = splitPreviewTrailingNewlines === null ? 'false' : 'true';
                     initializePreviewHistory();
                 } else {
                     preview.contentEditable = previewSourceMapping ? 'false' : 'true';
@@ -1605,6 +1613,9 @@ function setEditMode(enabled: boolean, discardPreviewDraft = false) {
         });
     } else {
         // Exit edit mode
+        previewSourceMapping = null;
+        setMappedFormattingAvailability(false);
+        $('previewDraftRecovery')?.classList.remove('show');
         previewUndoStack = [];
         previewRedoStack = [];
         if (previewToEditorTimer !== null) {
@@ -1679,7 +1690,7 @@ function comparablePreviewHtml(root: HTMLElement): string {
     return getPreviewEditHtml(root);
 }
 
-function configurePreviewEditing(preview: HTMLElement, source: string): void {
+function configurePreviewEditing(preview: HTMLElement, source: string, forceMapped = false): void {
     previewSourceMapping = null;
     setMappedFormattingAvailability(false);
     previewEditBaselineHtml = getPreviewEditHtml(preview);
@@ -1687,7 +1698,7 @@ function configurePreviewEditing(preview: HTMLElement, source: string): void {
     const ordinaryRoundTrip = !hasUnsafePreviewEditSource(source) &&
         getPreviewEditTrailingNewlines(source, previewEditBaselineMarkdown) !== null &&
         !/<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(previewEditBaselineHtml);
-    if (ordinaryRoundTrip) {
+    if (!forceMapped && ordinaryRoundTrip) {
         preview.contentEditable = 'true';
         return;
     }
@@ -1709,15 +1720,15 @@ function configurePreviewEditing(preview: HTMLElement, source: string): void {
     }
     previewSourceMapping = preparePreviewSourceMapping(preview, renderPreviewForComparison(source), source, blocks, previewEditBaselineHtml);
     preview.contentEditable = 'false';
-    setMappedFormattingAvailability(true);
+    setMappedFormattingAvailability(isPreviewEditMode);
     const notice = document.createElement('div');
     notice.className = 'preview-source-notice';
     notice.setAttribute('data-preview-source-notice', previewSourceMapping.key);
     notice.setAttribute('contenteditable', 'false');
-    notice.innerHTML = (previewSourceMapping.ranges.length
+    notice.innerHTML = previewSourceMapping.ranges.length
         ? '为保护原文，仅可编辑可定位的文字；换行、格式和其他内容请在分屏源码中修改。 '
-        : '此文档不能安全定位可编辑文字，请切换到分屏源码编辑。 ') +
-        '<button type="button" data-preview-source-action="split">切换分屏</button>';
+        : '此文档不能安全定位可编辑文字，请在分屏源码中修改。 ';
+    if (isPreviewEditMode) notice.innerHTML += '<button type="button" data-preview-source-action="split">切换分屏</button>';
     preview.insertBefore(notice, preview.firstChild);
 }
 
@@ -1818,11 +1829,26 @@ function showPreviewDraftRecovery(preview: HTMLElement): void {
             }
             // This explicit action discards only the preview draft after the user has backed it up.
             panel?.classList.remove('show');
-            setEditMode(true, true);
+            if (isEditMode && !isPreviewEditMode) {
+                const editor = $('markdownEditor') as HTMLTextAreaElement | null;
+                if (editor) {
+                    splitEditorSource = reconcileEditorLineEndings(splitEditorSource, editor.value);
+                    currentContent = splitEditorSource;
+                }
+                previewSourceMapping = null;
+                renderMarkdown(currentContent);
+                scheduleMarkdownAutoSave();
+            } else {
+                setEditMode(true, true);
+            }
         });
     }
     const textarea = panel.querySelector<HTMLTextAreaElement>('textarea');
     if (textarea) textarea.value = getPreviewEditHtml(preview);
+    const switchButton = panel.querySelector<HTMLButtonElement>('[data-action="switch"]');
+    if (switchButton) switchButton.textContent = isPreviewEditMode
+        ? '已备份；放弃预览改动并打开分屏'
+        : '已备份；放弃预览改动并保留源码';
     panel.classList.add('show');
 }
 
@@ -1831,6 +1857,11 @@ function hasUnsavedMarkdownEdits(): boolean {
     if (isPreviewEditMode) {
         const preview = $('markdownPreview');
         return currentContent !== originalContent || (!!preview && getPreviewEditHtml(preview) !== previewEditBaselineHtml);
+    }
+    const preview = $('markdownPreview');
+    if (previewSourceMapping && preview) {
+        const draft = getMappedPreviewDraft(preview);
+        if (draft === null || draft !== splitEditorSource) return true;
     }
     const editor = $('markdownEditor') as HTMLTextAreaElement | null;
     return !!editor && reconcileEditorLineEndings(splitEditorSource, editor.value) !== originalContent;
@@ -2109,16 +2140,37 @@ function pushPreviewEditsToEditor(): boolean {
     }
 
     const preview = $('markdownPreview');
-    if (!preview || splitPreviewTrailingNewlines === null || splitPreviewBaselineHtml === null) return true;
-    const html = getPreviewEditHtml(preview);
-    if (html === splitPreviewBaselineHtml) return true;
-    if (/<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(html)) {
-        showToast('预览包含无法安全保存的格式，请使用源代码编辑。');
-        return false;
-    }
-    const markdown = sanitizeMarkdownCopyLinkArtifacts(previewToMarkdown()) + splitPreviewTrailingNewlines;
-    if (markdown === editor.value) {
-        return true;
+    if (!preview) return true;
+    let markdown: string;
+    const mapped = previewSourceMapping !== null;
+    if (mapped) {
+        if (previewSourceMapping?.composing) {
+            showToast('正在输入文字，请完成输入后再保存或切换。', true);
+            return false;
+        }
+        // Never overwrite a source edit made since the preview was last synchronized.
+        if (editor.value !== splitEditorSource.replace(/\r\n|\r/g, '\n')) {
+            showPreviewDraftRecovery(preview);
+            return false;
+        }
+        const draft = getMappedPreviewDraft(preview);
+        if (draft === null) {
+            showPreviewDraftRecovery(preview);
+            return false;
+        }
+        if (draft === splitEditorSource) return true;
+        markdown = draft;
+    } else {
+        if (splitPreviewTrailingNewlines === null || splitPreviewBaselineHtml === null) return true;
+        const html = getPreviewEditHtml(preview);
+        if (html === splitPreviewBaselineHtml) return true;
+        if (/<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(html)) {
+            showToast('预览包含无法安全保存的格式，请使用源代码编辑。');
+            return false;
+        }
+        markdown = sanitizeMarkdownCopyLinkArtifacts(previewToMarkdown()) + splitPreviewTrailingNewlines;
+        if (markdown === editor.value) return true;
+        splitPreviewBaselineHtml = html;
     }
 
     // Let Ctrl+Z in the text side undo this change
@@ -2129,9 +2181,8 @@ function pushPreviewEditsToEditor(): boolean {
     if (scrollTimeout) clearTimeout(scrollTimeout);
     scrollTimeout = setTimeout(() => { activeScrollSource = null; }, 400);
 
-    splitPreviewBaselineHtml = html;
-    splitEditorSource = reconcileEditorLineEndings(splitEditorSource, markdown);
-    editor.value = markdown; // programmatic set: no 'input' event, so no re-render
+    splitEditorSource = mapped ? markdown : reconcileEditorLineEndings(splitEditorSource, markdown);
+    editor.value = splitEditorSource; // programmatic set: no 'input' event, so no re-render
     currentContent = splitEditorSource;
     refreshEditorLineCache();
     updateStatusInfo();
@@ -2260,6 +2311,18 @@ function flushLivePreviewRender() {
 function onEditorInput() {
     const editor = $('markdownEditor') as HTMLTextAreaElement;
     if (!editor) return;
+    const preview = $('markdownPreview');
+    if (!isPreviewEditMode && previewSourceMapping && preview) {
+        const draft = getMappedPreviewDraft(preview);
+        if (draft === null || draft !== splitEditorSource) {
+            showPreviewDraftRecovery(preview);
+            return;
+        }
+        // The source now owns the next edit; prevent typing into the stale rendered ranges.
+        preview.querySelectorAll('[data-preview-source-key]').forEach(node => node.setAttribute('contenteditable', 'false'));
+        previewSourceMapping = null;
+        splitPreviewBaselineHtml = null;
+    }
     scrollDiagnosticUntil = Date.now() + 1000;
     reportScrollDiagnostic('editor-input', true);
 
@@ -5354,17 +5417,30 @@ function wireEditor() {
     editor.addEventListener('blur', flushLivePreviewRender);
 
     // Track which side of Split Edit the user last clicked (drives toolbar behavior)
-    editor.addEventListener('focus', () => { activePane = 'editor'; });
+    editor.addEventListener('focus', () => {
+        if (!isPreviewEditMode && previewSourceMapping) pushPreviewEditsToEditor();
+        activePane = 'editor';
+    });
     if (preview) {
-        preview.addEventListener('focus', () => { activePane = 'preview'; });
+        preview.addEventListener('focusin', () => { activePane = 'preview'; });
         preview.addEventListener('click', (event) => {
-            if (isEditMode && !isPreviewEditMode && splitPreviewTrailingNewlines === null) {
-                showToast('此文档的预览不能安全转换，请在源码区域编辑。', true);
-            } else if (isPreviewEditMode && previewSourceMapping) {
+            if (isEditMode && previewSourceMapping) {
                 const target = event.target as HTMLElement | null;
-                if (target && !target.closest(`[data-preview-source-key="${previewSourceMapping.key}"]`) &&
-                    !target.closest('a, button, input, img')) {
-                    showToast('这部分不能安全定位，请切换到分屏源码修改。', true);
+                if (!target || target.closest(`[data-preview-source-key="${previewSourceMapping.key}"]`) ||
+                    target.closest('a, button, input, img, [data-preview-source-notice]')) return;
+                const container = target.closest<HTMLElement>('td, th, p, li, h1, h2, h3, h4, h5, h6');
+                if (container && target === container) {
+                    const editable = container.querySelectorAll<HTMLElement>(`[data-preview-source-key="${previewSourceMapping.key}"]`);
+                    // Do not guess between fragments or redirect a click on unmapped text.
+                    if (editable.length === 1 && container.textContent?.trim() === editable[0].textContent?.trim()) {
+                        editable[0].focus({ preventScroll: true });
+                        const selection = window.getSelection();
+                        const range = document.createRange();
+                        range.selectNodeContents(editable[0]);
+                        range.collapse(false);
+                        selection?.removeAllRanges();
+                        selection?.addRange(range);
+                    }
                 }
             }
         });
@@ -5640,6 +5716,11 @@ function wirePreviewInteractions() {
         if (!toggleTaskListItemByIndex(index, checkbox.checked, allCheckboxes.length)) {
             checkbox.checked = !checkbox.checked;
             showToast('无法可靠定位待办项，请在源码中修改。');
+        } else if (isEditMode && previewSourceMapping) {
+            // The checkbox changes source directly, so rebuild stale mapped offsets.
+            previewSourceMapping = null;
+            renderMarkdown(currentContent);
+            scheduleMarkdownAutoSave();
         }
     });
 
@@ -5840,6 +5921,7 @@ function wirePreviewInteractions() {
         if (!previewSourceMapping) return;
         previewSourceMapping.composing = false;
         if (validateMappedPreviewInput(preview)) {
+            if (!isPreviewEditMode && !pushPreviewEditsToEditor()) return;
             schedulePreviewHistoryCapture();
             scheduleMarkdownAutoSave();
         }
@@ -5848,6 +5930,7 @@ function wirePreviewInteractions() {
     preview.addEventListener('input', () => {
         if (previewSourceMapping) {
             if (previewSourceMapping.composing || !validateMappedPreviewInput(preview)) return;
+            if (!isPreviewEditMode && !pushPreviewEditsToEditor()) return;
         }
         schedulePreviewHistoryCapture();
         scheduleMarkdownAutoSave();

@@ -218,6 +218,116 @@ async function protectedDomAndSearch() {
     } finally { ctx.dom.window.close(); }
 }
 
+async function mappedSplitEditing() {
+    const source = '唯一正文\r\n\r\n[本地链接](</Users/示例/资料.md>)\r\n\r\n| 表头 | 值 |\r\n|---|---|\r\n| 单元原文 | 12 |\r\n\r\n- [ ] 待办原文\r\n\r\n<mark>高亮</mark>\r\n\r\n~~~js\r\n\tconst x=1;\r\n~~~\r\n\r\n';
+    const ctx = await create(source);
+    try {
+        const visualCell = mapped(ctx, '单元原文');
+        visualCell.closest('td').click();
+        assert(!ctx.w.document.querySelector('#toastNotification.error'), 'clicking an editable cell margin must not show an error');
+        ctx.w.document.getElementById('toggleEditModeButton').click();
+        await wait(100);
+        const editor = ctx.w.document.getElementById('markdownEditor');
+        assert.strictEqual(ctx.preview.contentEditable, 'false', 'complex preview must keep its unmapped content protected');
+        assert(mapped(ctx, '唯一正文') && mapped(ctx, '单元原文'), 'complex split preview should expose mapped text');
+        assert(!ctx.w.document.querySelector('#formattingToolbar [data-format="bold"]').disabled, 'source formatting must remain available');
+        ctx.preview.querySelector('p').click();
+        assert(!ctx.w.document.querySelector('#toastNotification.error'), 'ordinary split preview clicks must not show an error');
+        edit(ctx, mapped(ctx, '单元原文'), '单元修改');
+        let expected = source.replace('单元原文', '单元修改');
+        assert.strictEqual(editor.value, expected.replace(/\r\n/g, '\n'), 'mapped preview edit must immediately reach the source');
+        ctx.preview.querySelector('input.task-list-item-checkbox').click();
+        expected = expected.replace('- [ ] 待办原文', '- [x] 待办原文');
+        await wait(100);
+        assert.strictEqual(editor.value, expected.replace(/\r\n/g, '\n'), 'task changes must not use stale source offsets');
+        editor.focus();
+        editor.value = editor.value.replace('唯一正文', '源码修改');
+        editor.dispatchEvent(new ctx.w.Event('input', { bubbles: true }));
+        expected = expected.replace('唯一正文', '源码修改');
+        ctx.w.document.getElementById('saveEditsButton').click();
+        assert.strictEqual(saves(ctx).at(-1)?.text, expected, 'immediate save must preserve both pane edits and untouched bytes');
+        ack(ctx);
+        await wait(100);
+        assert.deepStrictEqual(ctx.errors, []);
+    } finally { ctx.dom.window.close(); }
+}
+
+async function mappedSplitCompositionAndAutoSave() {
+    const source = '输入正文\n\n| 表头 | 值 |\n|---|---|\n| 单元 | 数据 |\n';
+    const ctx = await create(source, { autoSave: true, autoSaveDelay: 20 });
+    try {
+        ctx.w.document.getElementById('toggleEditModeButton').click();
+        await wait(100);
+        let span = mapped(ctx, '输入正文');
+        const editor = ctx.w.document.getElementById('markdownEditor');
+        const lineBreak = new ctx.w.InputEvent('beforeinput', { inputType: 'insertParagraph', bubbles: true, cancelable: true });
+        span.dispatchEvent(lineBreak);
+        assert(lineBreak.defaultPrevented, 'mapped split preview must protect structural input');
+        span.dispatchEvent(new ctx.w.CompositionEvent('compositionstart', { bubbles: true }));
+        edit(ctx, span, '中文输入');
+        ctx.w.document.getElementById('saveEditsButton').click();
+        assert.strictEqual(saves(ctx).length, 0, 'ongoing composition must not save an incomplete draft');
+        span.dispatchEvent(new ctx.w.CompositionEvent('compositionend', { bubbles: true }));
+        assert.strictEqual(editor.value, source.replace('输入正文', '中文输入'));
+        await wait(100);
+        assert.strictEqual(saves(ctx).at(-1)?.text, source.replace('输入正文', '中文输入'));
+        assert.strictEqual(saves(ctx).at(-1)?.silent, true);
+        edit(ctx, span, '中文输入完成');
+        ack(ctx, { ok: true, silent: true });
+        await wait(120);
+        assert.strictEqual(saves(ctx).at(-1)?.text, source.replace('输入正文', '中文输入完成'), 'new input during save must be saved next');
+        ack(ctx, { ok: true, silent: true });
+        await wait(50);
+        span = mapped(ctx, '中文输入完成');
+        edit(ctx, span, '**危险结构**');
+        assert.strictEqual(span.textContent, '中文输入完成', 'unsupported text must restore the last accepted input');
+    } finally { ctx.dom.window.close(); }
+}
+
+async function mappedSplitUndo() {
+    const source = '待撤销段落\n\n| 表头 | 值 |\n|---|---|\n| 内容 | 数据 |\n';
+    const ctx = await create(source);
+    try {
+        ctx.w.document.getElementById('toggleEditModeButton').click();
+        await wait(100);
+        let span = mapped(ctx, '待撤销段落');
+        edit(ctx, span, '第一版段落');
+        await wait(240);
+        edit(ctx, span, '第二版段落');
+        await wait(240);
+        span.dispatchEvent(new ctx.w.KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true, cancelable: true }));
+        const editor = ctx.w.document.getElementById('markdownEditor');
+        assert.strictEqual(editor.value, source.replace('待撤销段落', '第一版段落'), 'preview undo must synchronize before a save');
+        span = mapped(ctx, '第一版段落');
+        span.dispatchEvent(new ctx.w.KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+        assert.strictEqual(editor.value, source.replace('待撤销段落', '第二版段落'), 'preview redo must synchronize before a save');
+    } finally { ctx.dom.window.close(); }
+}
+
+async function mappedSplitConflictRecovery() {
+    const source = '原文段落\n\n| 表头 | 值 |\n|---|---|\n| 内容 | 数据 |\n';
+    const ctx = await create(source);
+    try {
+        ctx.w.document.getElementById('toggleEditModeButton').click();
+        await wait(100);
+        const span = mapped(ctx, '原文段落');
+        const editor = ctx.w.document.getElementById('markdownEditor');
+        span.textContent = '预览未同步草稿';
+        editor.value = editor.value.replace('原文段落', '源码独立修改');
+        editor.dispatchEvent(new ctx.w.Event('input', { bubbles: true }));
+        const panel = ctx.w.document.getElementById('previewDraftRecovery');
+        assert(panel?.classList.contains('show'), 'conflicting drafts must open recovery instead of overwriting either side');
+        assert(panel.querySelector('textarea').value.includes('预览未同步草稿'));
+        ctx.w.document.getElementById('saveEditsButton').click();
+        assert.strictEqual(saves(ctx).length, 0, 'conflicting drafts must not be written');
+        panel.querySelector('[data-action="switch"]').click();
+        await wait(100);
+        assert.strictEqual(editor.value, source.replace('原文段落', '源码独立修改'), 'explicit recovery must retain source changes');
+        ctx.w.document.getElementById('saveEditsButton').click();
+        assert.strictEqual(saves(ctx).at(-1)?.text, source.replace('原文段落', '源码独立修改'));
+    } finally { ctx.dom.window.close(); }
+}
+
 async function extraSample(file) {
     const source = fs.readFileSync(file, 'utf8');
     const ctx = await create(source);
@@ -251,6 +361,21 @@ async function extraSample(file) {
             assert.strictEqual(saves(saveContext)[0].text, source.replace(originalText, originalText + ' 测试修改'), `${method} must preserve all other sample bytes`);
         } finally { saveContext.dom.window.close(); }
     }
+
+    const splitContext = await create(source);
+    try {
+        splitContext.w.document.getElementById('toggleEditModeButton').click();
+        await wait(100);
+        const target = Array.from(splitContext.preview.querySelectorAll('td [data-preview-source-key]'))
+            .find(node => node.textContent && source.indexOf(node.textContent) === source.lastIndexOf(node.textContent));
+        assert(target, 'copied sample has no uniquely identifiable mapped table text in split preview');
+        const originalText = target.textContent;
+        target.closest('td').click();
+        assert(!splitContext.w.document.querySelector('#toastNotification.error'), 'table margin must not emit a false error');
+        edit(splitContext, target, originalText + ' 测试修改');
+        target.dispatchEvent(new splitContext.w.KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true, cancelable: true }));
+        assert.strictEqual(saves(splitContext).at(-1)?.text, source.replace(originalText, originalText + ' 测试修改'), 'split sample save must preserve all other source bytes');
+    } finally { splitContext.dom.window.close(); }
 }
 
 (async () => {
@@ -261,6 +386,10 @@ async function extraSample(file) {
     await compositionAndUndo();
     await mermaidRenderDuringSave();
     await protectedDomAndSearch();
+    await mappedSplitEditing();
+    await mappedSplitCompositionAndAutoSave();
+    await mappedSplitUndo();
+    await mappedSplitConflictRecovery();
     if (process.env.MD_PREVIEW_SAMPLE) await extraSample(process.env.MD_PREVIEW_SAMPLE);
     console.log('预览保真测试通过：复杂文档局部修改、字节对照、切换、保存中继续编辑、自动保存及草稿恢复。');
 })().catch(error => { console.error(error); process.exitCode = 1; });

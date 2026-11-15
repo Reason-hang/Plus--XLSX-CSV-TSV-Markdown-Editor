@@ -10,7 +10,7 @@ function visit(node) {
 visit(source);
 if (!fn) throw Error('missing split editor synchronization');
 const script = `
-let previewToEditorTimer=null,isEditMode=true,isPreviewEditMode=false,splitPreviewBaselineHtml='before',splitPreviewTrailingNewlines='\\n',currentContent='原文\\n',splitEditorSource='原文\\n',activeScrollSource=null,scrollTimeout=null;
+let previewToEditorTimer=null,isEditMode=true,isPreviewEditMode=false,previewSourceMapping=null,splitPreviewBaselineHtml='before',splitPreviewTrailingNewlines='\\n',currentContent='原文\\n',splitEditorSource='原文\\n',activeScrollSource=null,scrollTimeout=null;
 let html='before',converted='新内容',saved=0;
 const editor={value:'原文\\n'}, preview={};
 const $=id=>id==='markdownEditor'?editor:preview;
