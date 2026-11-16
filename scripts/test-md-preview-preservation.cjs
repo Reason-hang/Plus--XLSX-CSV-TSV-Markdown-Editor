@@ -53,7 +53,7 @@ async function complexSaveAndSwitch() {
     const source = '第一段独有文字。\r\n\r\n<mark>高亮保留</mark>\r\n\r\n- [ ] 待办原句\r\n- 列表原句\r\n\r\n| 表头 | 数值 |\r\n| --- | --- |\r\n| 单元内容 | 12 |\r\n\r\n~~~~mermaid  title\r\n\tgraph TD\r\n A-->B\r\n~~~~\r\n\r\n![图片](./images/a.png)\r\n\r\n';
     const ctx = await create(source);
     try {
-        assert.strictEqual(ctx.preview.contentEditable, 'false');
+        assert.strictEqual(ctx.preview.contentEditable, 'true');
         const notice = ctx.preview.querySelector('[data-preview-source-notice]');
         assert(notice?.textContent.includes('仅可编辑可定位的文字'));
         assert(ctx.w.document.querySelector('#formattingToolbar [data-format="bold"]').disabled);
@@ -228,7 +228,7 @@ async function mappedSplitEditing() {
         ctx.w.document.getElementById('toggleEditModeButton').click();
         await wait(100);
         const editor = ctx.w.document.getElementById('markdownEditor');
-        assert.strictEqual(ctx.preview.contentEditable, 'false', 'complex preview must keep its unmapped content protected');
+        assert.strictEqual(ctx.preview.contentEditable, 'true', 'complex preview should permit selecting across mapped text');
         assert(mapped(ctx, '唯一正文') && mapped(ctx, '单元原文'), 'complex split preview should expose mapped text');
         assert(!ctx.w.document.querySelector('#formattingToolbar [data-format="bold"]').disabled, 'source formatting must remain available');
         ctx.preview.querySelector('p').click();
@@ -301,6 +301,32 @@ async function mappedSplitUndo() {
         span = mapped(ctx, '第一版段落');
         span.dispatchEvent(new ctx.w.KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true, bubbles: true, cancelable: true }));
         assert.strictEqual(editor.value, source.replace('待撤销段落', '第二版段落'), 'preview redo must synchronize before a save');
+    } finally { ctx.dom.window.close(); }
+}
+
+async function mappedCrossParagraphSelection() {
+    const source = '第一段正文\n\n第二段正文\n\n| 表头 | 值 |\n|---|---|\n| 内容 | 数据 |\n';
+    const ctx = await create(source);
+    try {
+        const first = mapped(ctx, '第一段正文');
+        const second = mapped(ctx, '第二段正文');
+        const selection = ctx.w.getSelection();
+        const range = ctx.w.document.createRange();
+        range.setStart(first.firstChild, 0);
+        range.setEnd(second.firstChild, second.textContent.length);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        assert(selection.toString().includes('第一段正文') && selection.toString().includes('第二段正文'));
+        const multiInput = new ctx.w.InputEvent('beforeinput', { inputType: 'insertText', data: '改', bubbles: true, cancelable: true });
+        ctx.preview.dispatchEvent(multiInput);
+        assert(multiInput.defaultPrevented, 'editing across mapped ranges must be rejected before mutation');
+        range.setStart(first.firstChild, 1);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        const singleInput = new ctx.w.InputEvent('beforeinput', { inputType: 'insertText', data: '改', bubbles: true, cancelable: true });
+        ctx.preview.dispatchEvent(singleInput);
+        assert(!singleInput.defaultPrevented, 'editing within a mapped range must remain available');
     } finally { ctx.dom.window.close(); }
 }
 
@@ -389,6 +415,7 @@ async function extraSample(file) {
     await mappedSplitEditing();
     await mappedSplitCompositionAndAutoSave();
     await mappedSplitUndo();
+    await mappedCrossParagraphSelection();
     await mappedSplitConflictRecovery();
     if (process.env.MD_PREVIEW_SAMPLE) await extraSample(process.env.MD_PREVIEW_SAMPLE);
     console.log('预览保真测试通过：复杂文档局部修改、字节对照、切换、保存中继续编辑、自动保存及草稿恢复。');

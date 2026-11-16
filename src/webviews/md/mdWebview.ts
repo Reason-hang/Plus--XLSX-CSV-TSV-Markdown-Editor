@@ -634,7 +634,7 @@ function restorePreviewSnapshot(snapshot: string) {
     }
 
     preview.innerHTML = snapshot;
-    preview.contentEditable = previewSourceMapping ? 'false' : 'true';
+    preview.contentEditable = 'true';
     enhancePreviewTablesForEditing();
     if (previewSourceMapping) {
         const values = previewSourceValues(preview, previewSourceMapping);
@@ -1460,13 +1460,14 @@ function renderMarkdown(content: string) {
                         configurePreviewEditing(preview, splitEditorSource, true);
                     } else {
                         previewSourceMapping = null;
+                        preview.classList.remove('mapped-preview');
                         setMappedFormattingAvailability(false);
                         preview.contentEditable = 'true';
                     }
                     splitPreviewBaselineHtml = getPreviewEditHtml(preview);
                     initializePreviewHistory();
                 } else {
-                    preview.contentEditable = previewSourceMapping ? 'false' : 'true';
+                    preview.contentEditable = 'true';
                 }
             }
             updateScrollSpy();
@@ -1692,6 +1693,7 @@ function comparablePreviewHtml(root: HTMLElement): string {
 
 function configurePreviewEditing(preview: HTMLElement, source: string, forceMapped = false): void {
     previewSourceMapping = null;
+    preview.classList.remove('mapped-preview');
     setMappedFormattingAvailability(false);
     previewEditBaselineHtml = getPreviewEditHtml(preview);
     previewEditBaselineMarkdown = turndownService.turndown(previewEditBaselineHtml);
@@ -1719,7 +1721,8 @@ function configurePreviewEditing(preview: HTMLElement, source: string, forceMapp
         }
     }
     previewSourceMapping = preparePreviewSourceMapping(preview, renderPreviewForComparison(source), source, blocks, previewEditBaselineHtml);
-    preview.contentEditable = 'false';
+    preview.classList.add('mapped-preview');
+    preview.contentEditable = 'true';
     setMappedFormattingAvailability(isPreviewEditMode);
     const notice = document.createElement('div');
     notice.className = 'preview-source-notice';
@@ -2320,6 +2323,7 @@ function onEditorInput() {
         }
         // The source now owns the next edit; prevent typing into the stale rendered ranges.
         preview.querySelectorAll('[data-preview-source-key]').forEach(node => node.setAttribute('contenteditable', 'false'));
+        preview.contentEditable = 'false';
         previewSourceMapping = null;
         splitPreviewBaselineHtml = null;
     }
@@ -5433,7 +5437,7 @@ function wireEditor() {
                     const editable = container.querySelectorAll<HTMLElement>(`[data-preview-source-key="${previewSourceMapping.key}"]`);
                     // Do not guess between fragments or redirect a click on unmapped text.
                     if (editable.length === 1 && container.textContent?.trim() === editable[0].textContent?.trim()) {
-                        editable[0].focus({ preventScroll: true });
+                        preview.focus({ preventScroll: true });
                         const selection = window.getSelection();
                         const range = document.createRange();
                         range.selectNodeContents(editable[0]);
@@ -5898,8 +5902,15 @@ function wirePreviewInteractions() {
 
     preview.addEventListener('beforeinput', (event: InputEvent) => {
         if (!previewSourceMapping) return;
-        const target = event.target as HTMLElement | null;
-        if (!target?.closest(`[data-preview-source-key="${previewSourceMapping.key}"]`) ||
+        const selector = `[data-preview-source-key="${previewSourceMapping.key}"]`;
+        const mappedParent = (node: Node | null): Element | null =>
+            (node?.nodeType === Node.ELEMENT_NODE ? node as Element : node?.parentElement)?.closest(selector) || null;
+        const selection = window.getSelection();
+        const anchor = mappedParent(selection?.anchorNode || null);
+        const focus = mappedParent(selection?.focusNode || null);
+        const targets = typeof event.getTargetRanges === 'function' ? event.getTargetRanges() : [];
+        const safeTargets = Array.from(targets).every(range => mappedParent(range.startContainer) === anchor && mappedParent(range.endContainer) === anchor);
+        if (!anchor || anchor !== focus || !safeTargets ||
             /^(?:insertParagraph|insertLineBreak|insertFromDrop|deleteByDrag|format)/.test(event.inputType) ||
             /[\r\n\t]/.test(event.data || '')) {
             event.preventDefault();

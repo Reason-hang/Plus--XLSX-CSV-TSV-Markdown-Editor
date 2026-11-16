@@ -168,7 +168,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     editor.value = unsafeTabs;
     editor.dispatchEvent(new w.Event('input', { bubbles: true }));
     await wait(650);
-    if (preview.contentEditable !== 'false' || editor.value !== unsafeTabs) throw new Error('Tabs outside fences must remain protected');
+    if (!preview.classList.contains('mapped-preview') || editor.value !== unsafeTabs) throw new Error('Tabs outside fences must remain protected');
     const imageSource = 'picture intro\n\n![alt](./images/pic.png)\n';
     editor.value = imageSource;
     editor.dispatchEvent(new w.Event('input', { bubbles: true }));

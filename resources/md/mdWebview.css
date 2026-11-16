@@ -1167,8 +1167,12 @@ body.edit-mode .markdown-preview .table-tool-btn[data-table-action="tableRemoveC
 }
 
 #markdownPreview [data-preview-source-key]:focus {
-    outline: 1px solid var(--vscode-focusBorder, #007acc);
-    outline-offset: 2px;
+    outline: none;
+}
+
+body.edit-mode .markdown-container.split-view .markdown-preview.mapped-preview:focus,
+body.preview-edit-mode .markdown-preview.mapped-preview:focus {
+    outline: none;
 }
 
 .preview-source-notice {

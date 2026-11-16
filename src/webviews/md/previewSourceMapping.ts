@@ -98,7 +98,6 @@ export function preparePreviewSourceMapping(
         const wrapper = document.createElement('span');
         wrapper.setAttribute('data-preview-source-key', key);
         wrapper.setAttribute('data-preview-source-index', String(ranges.length));
-        wrapper.setAttribute('contenteditable', 'plaintext-only');
         item.live.parentNode?.insertBefore(wrapper, item.live);
         wrapper.appendChild(item.live);
         ranges.push({ start: item.start, end: item.end, original: item.original, path: item.path });
