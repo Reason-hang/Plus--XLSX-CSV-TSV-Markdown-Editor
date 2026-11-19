@@ -20,7 +20,7 @@ import abbr from 'markdown-it-abbr';
 // @ts-ignore
 import { full as emoji } from 'markdown-it-emoji';
 // @ts-ignore
-import katex from 'markdown-it-katex';
+import katex from './markdownItKatex';
 
 import hljs from 'highlight.js';
 import { ThemeManager } from '../shared/themeManager';
@@ -29,6 +29,9 @@ import { ToolbarManager } from '../shared/toolbarManager';
 import { applyToolbarLayout } from '../shared/toolbarLayout';
 import { Utils } from '../shared/utils';
 import { MdToPdfExporter } from './mdToPdfExporter';
+import { MdToolbarController } from './mdToolbarController';
+import { getPreviewEditTrailingNewlines, hasUnsafePreviewEditSource, reconcileEditorLineEndings } from './previewEditSafety';
+import { mappedPreviewDraft, preparePreviewSourceMapping, previewSourceValues, unwrapPreviewSourceRanges, PreviewBlockRange, PreviewSourceMapping } from './previewSourceMapping';
 import { Icons } from '../shared/icons';
 import { vscode, debounce } from '../shared/common';
 import { FeedbackModal } from '../shared/feedbackModal';
@@ -170,6 +173,7 @@ let originalContent = '';
 let currentContent = '';
 let toolbarManager: ToolbarManager | null = null;
 let mdSettingsManager: SettingsManager | null = null;
+let mdToolbarController: MdToolbarController | null = null;
 const resolvedImageUriCache = new Map<string, string>();
 let documentUri = '';
 let documentDirUri = '';
@@ -279,6 +283,8 @@ turndownService.addRule('mermaidBlock', {
     },
     replacement: (_content, node) => {
         const el = node as HTMLElement;
+        const rawFence = decodeStoredFenceCode(el.getAttribute('data-original-fence'));
+        if (rawFence !== null) return `\n\n${rawFence}\n\n`;
         const code = decodeStoredFenceCode(el.getAttribute('data-mermaid-code')) || el.textContent || '';
         const info = el.getAttribute('data-fence-info') || 'mermaid';
         return formatFencedMarkdown(info, code);
@@ -291,6 +297,8 @@ turndownService.addRule('fencedCodeBlockContainer', {
     },
     replacement: (_content, node) => {
         const el = node as HTMLElement;
+        const rawFence = decodeStoredFenceCode(el.getAttribute('data-original-fence'));
+        if (rawFence !== null) return `\n\n${rawFence}\n\n`;
         const info = el.getAttribute('data-fence-info') || '';
         const originalCode = decodeStoredFenceCode(el.getAttribute('data-code'));
 
@@ -331,6 +339,72 @@ turndownService.addRule('katexBlock', {
 });
 
 import { detectIsRTL } from '../shared/rtlUtils';
+import { resolveHeadingId } from './anchorNavigation';
+
+type MarkdownAppearanceSettings = {
+    markBackgroundColor?: string;
+    markTextColor?: string;
+    markFontWeight?: string;
+    markPadding?: string;
+    markBorderRadius?: string;
+    headingColor?: string;
+    previewBackgroundColor?: string;
+    previewTextColor?: string;
+    previewFontSize?: string;
+    previewLineHeight?: string;
+    editorFontSize?: string;
+    editorLineHeight?: string;
+};
+
+function cssValueOrFallback(value: unknown, fallback: string): string {
+    return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+function setOptionalCssValue(style: CSSStyleDeclaration, property: string, value: unknown): void {
+    if (typeof value === 'string' && value.trim()) {
+        style.setProperty(property, value.trim());
+    } else {
+        style.removeProperty(property);
+    }
+}
+
+function applyMarkdownAppearance(appearance?: MarkdownAppearanceSettings): void {
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty('--xlsx-viewer-md-mark-background', cssValueOrFallback(appearance?.markBackgroundColor, '#FF4E00'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-color', cssValueOrFallback(appearance?.markTextColor, 'inherit'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-font-weight', cssValueOrFallback(appearance?.markFontWeight, 'inherit'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-padding', cssValueOrFallback(appearance?.markPadding, '0 2px'));
+    rootStyle.setProperty('--xlsx-viewer-md-mark-border-radius', cssValueOrFallback(appearance?.markBorderRadius, '2px'));
+    rootStyle.setProperty('--xlsx-viewer-md-heading-color', cssValueOrFallback(appearance?.headingColor, '#569CD6'));
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-background', appearance?.previewBackgroundColor);
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-color', appearance?.previewTextColor);
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-font-size', appearance?.previewFontSize);
+    setOptionalCssValue(rootStyle, '--xlsx-viewer-md-preview-line-height', appearance?.previewLineHeight);
+    rootStyle.setProperty('--xlsx-viewer-md-editor-font-size', cssValueOrFallback(appearance?.editorFontSize, '16px'));
+    rootStyle.setProperty('--xlsx-viewer-md-editor-line-height', cssValueOrFallback(appearance?.editorLineHeight, '1.8'));
+}
+
+type MarkdownThemePayload = {
+    css?: string;
+    status?: 'disabled' | 'loaded' | 'fallback' | 'error';
+    sourcePath?: string;
+    sha256?: string;
+    message?: string;
+};
+
+function applyExternalMarkdownTheme(theme?: MarkdownThemePayload): void {
+    const styleId = 'xlsx-viewer-external-markdown-theme';
+    const css = typeof theme?.css === 'string' ? theme.css : '';
+    const existing = document.getElementById(styleId) as HTMLStyleElement | null;
+    if (!css) {
+        existing?.remove();
+        return;
+    }
+    const style = existing || document.createElement('style');
+    style.id = styleId;
+    style.textContent = css;
+    if (!existing) document.head.appendChild(style);
+}
 
 // Settings
 let currentSettings = {
@@ -349,10 +423,18 @@ let currentSettings = {
     autoSave: false,
     autoSaveDelay: 1000,
     autoSaveDelayOverride: 0,
-    editorAutoSaveDelay: 1000
+    editorAutoSaveDelay: 1000,
+    theme: undefined as MarkdownThemePayload | undefined,
+    appearance: undefined as MarkdownAppearanceSettings | undefined
 };
 let autoSaveTimer: any = null;
 let lastSaveContent = '';
+let previewEditBaselineHtml: string | null = null;
+let previewEditBaselineMarkdown: string | null = null;
+let previewEditSource = '';
+let pendingSavedPreviewHtml: string | null = null;
+let previewSourceMapping: PreviewSourceMapping | null = null;
+let splitEditorSource = '';
 
 const MIN_TEXT_SIZE = 70;
 const MAX_TEXT_SIZE = 200;
@@ -397,6 +479,8 @@ let previewHistoryTimer: number | null = null;
 // rendered-side (WYSIWYG) edits back into the plain-markdown textarea.
 let activePane: 'editor' | 'preview' = 'editor';
 let previewToEditorTimer: number | null = null;
+let splitPreviewBaselineHtml: string | null = null;
+let splitPreviewTrailingNewlines: string | null = null;
 
 function isPreviewWysiwygTarget(): boolean {
     return isPreviewEditMode || (isEditMode && activePane === 'preview');
@@ -481,6 +565,9 @@ function setButtonsEnabled(enabled: boolean) {
         const el = $(id) as HTMLButtonElement;
         if (el) el.disabled = !enabled;
     });
+    document.querySelectorAll<HTMLButtonElement>('[data-preview-source-action="split"]').forEach(button => { button.disabled = !enabled; });
+    mdToolbarController?.apply();
+    updateTextSizeButtonsState();
 }
 
 function getPreviewSnapshot(): string {
@@ -549,6 +636,10 @@ function restorePreviewSnapshot(snapshot: string) {
     preview.innerHTML = snapshot;
     preview.contentEditable = 'true';
     enhancePreviewTablesForEditing();
+    if (previewSourceMapping) {
+        const values = previewSourceValues(preview, previewSourceMapping);
+        if (values) previewSourceMapping.accepted = values;
+    }
     refreshSyncMetrics();
     requestAnimationFrame(() => {
         updateScrollSpy();
@@ -559,7 +650,10 @@ function restorePreviewSnapshot(snapshot: string) {
 
     // In Split Edit, mirror the restored rendered side back into the markdown textarea
     if (!isPreviewEditMode) {
-        schedulePreviewToEditorSync();
+        if (previewSourceMapping) pushPreviewEditsToEditor();
+        else schedulePreviewToEditorSync();
+    } else {
+        scheduleMarkdownAutoSave();
     }
 }
 
@@ -801,6 +895,7 @@ md.renderer.rules.image = function (tokens: any, idx: number, options: any, env:
     tokens[idx].attrSet('loading', 'lazy');
     const src = (tokens[idx].attrGet('src') || '').trim();
     if (shouldResolveLocalImage(src)) {
+        tokens[idx].attrSet('data-md-original-src', src);
         const resolved = resolvedImageUriCache.get(src) || resolvedImageUriCache.get(decodeURIComponentSafe(src));
         if (resolved) {
             tokens[idx].attrSet('src', resolved);
@@ -871,6 +966,8 @@ function executeLocalImageResolution() {
         if (!trimmed || !shouldResolveLocalImage(trimmed)) {
             return;
         }
+
+        if (!node.hasAttribute('data-md-original-src')) node.setAttribute('data-md-original-src', trimmed);
 
         const cached = resolvedImageUriCache.get(trimmed) || resolvedImageUriCache.get(decodeURIComponentSafe(trimmed));
         if (cached) {
@@ -998,19 +1095,24 @@ function applyResolvedImageUris(resolved: Record<string, string>, requestedSourc
 
     const preview = $('markdownPreview');
     if (preview) {
+        const currentRenderEpoch = renderEpoch;
         preview.querySelectorAll('img[data-md-src]').forEach((node) => {
             const source = (node.getAttribute('data-md-src') || '').trim();
             const uri = resolvedImageUriCache.get(source) || resolvedImageUriCache.get(decodeURIComponentSafe(source));
             if (!uri) {
                 return;
             }
-            node.addEventListener('load', refreshDataLineCache, { once: true });
+            node.addEventListener('load', () => {
+                if (currentRenderEpoch === renderEpoch && currentSettings.syncScroll && isEditMode && !isPreviewEditMode) {
+                    refreshDataLineCache();
+                }
+            }, { once: true });
             node.setAttribute('src', uri);
             node.removeAttribute('data-md-src');
         });
     }
 
-    refreshDataLineCache();
+    if (currentSettings.syncScroll && isEditMode && !isPreviewEditMode) refreshDataLineCache();
     processNextImageBatches();
 }
 
@@ -1019,6 +1121,10 @@ function applyResolvedImageUris(resolved: Record<string, string>, requestedSourc
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 md.renderer.rules.fence = function (tokens: any, idx: number, options: any, env: any, self: any) {
     const token = tokens[idx];
+    const rawFence = typeof env.originalSource === 'string' && token.map
+        ? env.originalSource.split('\n').slice(token.map[0], token.map[1]).join('\n')
+        : null;
+    const rawFenceAttr = rawFence === null ? '' : ` data-original-fence="${escapeHtmlAttr(encodeURIComponent(rawFence))}"`;
     const info = token.info ? md.utils.unescapeAll(token.info).trim() : '';
     const langName = info ? info.split(/\s+/g)[0] : '';
     const code = token.content || '';
@@ -1028,7 +1134,7 @@ md.renderer.rules.fence = function (tokens: any, idx: number, options: any, env:
         const dataLine = token.map && token.level === 0 ? ` data-line="${token.map[0]}"` : '';
         const encoded = encodeURIComponent(code);
         const fenceInfo = info || 'mermaid';
-        return `<div class="mermaid"${dataLine} data-mermaid-code="${escapeHtmlAttr(encoded)}" data-fence-info="${escapeHtmlAttr(fenceInfo)}" contenteditable="false">${md.utils.escapeHtml(code)}</div>`;
+        return `<div class="mermaid"${dataLine}${rawFenceAttr} data-mermaid-code="${escapeHtmlAttr(encoded)}" data-fence-info="${escapeHtmlAttr(fenceInfo)}" contenteditable="false">${md.utils.escapeHtml(code)}</div>`;
     }
 
     let highlighted = '';
@@ -1052,7 +1158,7 @@ md.renderer.rules.fence = function (tokens: any, idx: number, options: any, env:
     // Wrap each line for line numbers
     const numberedCode = wrapCodeLines(highlighted);
 
-    return `<div class="code-block"${dataLine} data-code="${escapeHtmlAttr(encoded)}" data-fence-info="${escapeHtmlAttr(info)}"><div class="code-block-header" contenteditable="false">${langLabel}${copyButton}</div><pre><code${langClass}>${numberedCode}</code></pre></div>`;
+    return `<div class="code-block"${dataLine}${rawFenceAttr} data-code="${escapeHtmlAttr(encoded)}" data-fence-info="${escapeHtmlAttr(info)}" contenteditable="false"><div class="code-block-header" contenteditable="false">${langLabel}${copyButton}</div><pre><code${langClass}>${numberedCode}</code></pre></div>`;
 };
 
 function addHeadingIds(tokens: any[]) {
@@ -1095,11 +1201,23 @@ function sanitizeMarkdownCopyLinkArtifacts(markdown: string): string {
         return '';
     }
 
-    return markdown.split('\n').map((line) => {
-        if (!/^\s{0,3}#{1,6}\s+/.test(line)) {
+    let fence: { marker: string; length: number } | null = null;
+    return markdown.split('\n').map(line => {
+        const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/);
+        if (fenceMatch) {
+            const marker = fenceMatch[1][0];
+            if (!fence) {
+                fence = { marker, length: fenceMatch[1].length };
+            } else if (fence.marker === marker && fenceMatch[1].length >= fence.length &&
+                line.slice(fenceMatch[0].length).trim() === '') {
+                fence = null;
+            }
             return line;
         }
-        return stripHeadingCopyLinkArtifacts(line);
+        if (fence || !/^\s{0,3}#{1,6}\s+/.test(line)) {
+            return line;
+        }
+        return line.replace(/\s*\[#\]\(#[^)\s]+(?:\s+"Copy link")?\)/g, '');
     }).join('\n');
 }
 
@@ -1167,7 +1285,8 @@ function buildToc(tokens: any[]) {
 }
 
 // ===== Rendering =====
-function renderMermaidFlowcharts() {
+function renderMermaidFlowcharts(expectedRenderEpoch?: number) {
+    if (expectedRenderEpoch !== undefined && expectedRenderEpoch !== renderEpoch) return;
     const mermaidLib = (md as any).mermaid;
     if (!mermaidLib) return;
 
@@ -1181,32 +1300,121 @@ function renderMermaidFlowcharts() {
 
     mermaidLib.initialize({
         startOnLoad: false,
-        theme: isDark ? 'dark' : 'default'
+        theme: isDark ? 'dark' : 'default',
+        securityLevel: 'strict'
     });
 
     mermaidLib.run({
         nodes: Array.from(nodes) as any
+    }).then(() => {
+        if (expectedRenderEpoch === undefined || expectedRenderEpoch === renderEpoch) refreshSyncMetrics();
     }).catch((err: any) => {
         console.error('Mermaid render error:', err);
     });
 }
 
 let isRenderingMarkdown = false;
+let renderEpoch = 0;
+const scrollDiagnosticLimit = 120;
+let scrollDiagnosticCount = 0;
+let scrollDiagnosticUntil = 0;
+
+function reportScrollDiagnostic(phase: string, force = false): void {
+    if (!isEditMode || scrollDiagnosticCount >= scrollDiagnosticLimit || (!force && Date.now() > scrollDiagnosticUntil)) return;
+    const editor = $('markdownEditor') as HTMLTextAreaElement | null;
+    const preview = $('markdownPreview');
+    const content = $('content');
+    vscode.postMessage({
+        command: 'reportScrollDiagnostics',
+        phase,
+        epoch: renderEpoch,
+        scrollTops: {
+            editor: Math.max(0, Math.round(editor?.scrollTop || 0)),
+            preview: Math.max(0, Math.round(preview?.scrollTop || 0)),
+            content: Math.max(0, Math.round(content?.scrollTop || 0)),
+            document: Math.max(0, Math.round(document.scrollingElement?.scrollTop || 0))
+        },
+        settings: { syncScroll: currentSettings.syncScroll, stickyToolbar: currentSettings.stickyToolbar }
+    });
+    scrollDiagnosticCount++;
+}
+
+function isSafeRenderedUrl(value: string, attributeName: string): boolean {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) {
+        return !trimmed.startsWith('//');
+    }
+
+    try {
+        const protocol = new URL(trimmed, 'https://xlsx-viewer.invalid/').protocol.toLowerCase();
+        if (attributeName === 'src') {
+            return protocol === 'http:' || protocol === 'https:' ||
+                (protocol === 'data:' && /^data:image\/(?:png|gif|jpe?g|webp|bmp|avif)(?:;|,)/i.test(trimmed));
+        }
+        return protocol === 'http:' || protocol === 'https:' || protocol === 'mailto:';
+    } catch {
+        return false;
+    }
+}
+
+function sanitizeRenderedMarkdownHtml(html: string): string {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+
+    template.content.querySelectorAll(
+        'script, style, iframe, object, embed, base, meta, link, portal, form, foreignObject'
+    ).forEach(element => element.remove());
+
+    template.content.querySelectorAll<HTMLElement>('*').forEach(element => {
+        Array.from(element.attributes).forEach(attribute => {
+            const name = attribute.name.toLowerCase();
+            if (name.startsWith('on') || name === 'srcdoc' || name === 'srcset') {
+                element.removeAttribute(attribute.name);
+                return;
+            }
+
+            if (name === 'style' && /url\s*\(|@import|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:/i.test(attribute.value)) {
+                element.removeAttribute(attribute.name);
+                return;
+            }
+
+            if (element.tagName.toLowerCase() === 'img' && name === 'src' && shouldResolveLocalImage(attribute.value)) {
+                const source = attribute.value.trim();
+                if (!/^[a-z][a-z0-9+.-]*:/i.test(source) || /^file:\/\//i.test(source) || /^[a-z]:[/\\]/i.test(source)) {
+                    if (!element.hasAttribute('data-md-src')) element.setAttribute('data-md-src', source);
+                    if (!element.hasAttribute('data-md-original-src')) element.setAttribute('data-md-original-src', source);
+                }
+                // Local images are loaded only after the host checks their real path.
+                element.removeAttribute(attribute.name);
+                return;
+            }
+
+            const urlAttributes = new Set(['href', 'src', 'xlink:href', 'formaction', 'action', 'poster', 'cite', 'background']);
+            if (urlAttributes.has(name) && !isSafeRenderedUrl(attribute.value, name)) {
+                element.removeAttribute(attribute.name);
+            }
+        });
+    });
+
+    return template.innerHTML;
+}
 
 function renderMarkdown(content: string) {
     I18n.detectAndApplyFromContent(content);
     const preview = $('markdownPreview');
     if (preview) {
+        const currentRenderEpoch = ++renderEpoch;
         isRenderingMarkdown = true;
+        reportScrollDiagnostic('render-before-replace', true);
         const editor = $('markdownEditor') as HTMLTextAreaElement | null;
         const isEditorFocused = !!editor && document.activeElement === editor;
         const savedScrollTop = preview.scrollTop;
         const savedScrollLeft = preview.scrollLeft;
-        const env: any = {};
+        const env: any = { originalSource: content || '' };
         const normalizedContent = sanitizeMarkdownCopyLinkArtifacts(content || '');
         const tokens = md.parse(normalizedContent, env);
         addHeadingIds(tokens);
-        preview.innerHTML = md.renderer.render(tokens, md.options, env);
+        preview.innerHTML = sanitizeRenderedMarkdownHtml(md.renderer.render(tokens, md.options, env));
 
         refreshSyncMetrics();
 
@@ -1230,27 +1438,47 @@ function renderMarkdown(content: string) {
         preview.querySelectorAll('img').forEach((node) => {
             if (!(node instanceof HTMLImageElement)) return;
             if (!node.complete) {
-                node.addEventListener('load', refreshDataLineCache, { once: true });
+                node.addEventListener('load', () => {
+                    if (currentRenderEpoch === renderEpoch) refreshSyncMetrics();
+                }, { once: true });
             }
         });
         updateToc(tokens);
-        requestAnimationFrame(() => {
-            // Any edit mode: keep the rendered side editable (WYSIWYG) with table tools
-            if (isEditMode) {
-                preview.contentEditable = 'true';
-                enhancePreviewTablesForEditing();
-                if (!isPreviewEditMode) {
-                    // Render came from the markdown textarea: reset rendered-side undo history
-                    initializePreviewHistory();
+        // Capture the draft baseline with the DOM, before any save or mode switch.
+        if (isEditMode) {
+            enhancePreviewTablesForEditing();
+            if (!isPreviewEditMode) {
+                const source = editor?.value ?? currentContent;
+                const roundTrip = sanitizeMarkdownCopyLinkArtifacts(previewToMarkdown());
+                splitPreviewTrailingNewlines = hasUnsafeSplitTabs(source) || /<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(getPreviewEditHtml(preview))
+                    ? null : getPreviewEditTrailingNewlines(source, roundTrip);
+                if (splitPreviewTrailingNewlines === null) {
+                    configurePreviewEditing(preview, splitEditorSource, true);
+                } else {
+                    previewSourceMapping = null;
+                    preview.classList.remove('mapped-preview');
+                    setMappedFormattingAvailability(false);
+                    preview.contentEditable = 'true';
                 }
+                splitPreviewBaselineHtml = getPreviewEditHtml(preview);
+                initializePreviewHistory();
+            } else {
+                preview.contentEditable = 'true';
             }
+        }
+        requestAnimationFrame(() => {
+            if (currentRenderEpoch !== renderEpoch) return;
+            reportScrollDiagnostic('render-after-replace', true);
             updateScrollSpy();
             updateProgressBar();
             reapplySearch();
             requestLocalImageResolution();
-            renderMermaidFlowcharts();
+            renderMermaidFlowcharts(currentRenderEpoch);
             requestAnimationFrame(() => {
-                isRenderingMarkdown = false;
+                if (currentRenderEpoch === renderEpoch) {
+                    isRenderingMarkdown = false;
+                    reportScrollDiagnostic('render-transaction-complete', true);
+                }
             });
         });
     }
@@ -1277,8 +1505,30 @@ function updateFormattingToolbarHeight() {
     }
 }
 
+function hasUnsafeSplitTabs(source: string): boolean {
+    if (!source.includes('\t')) return false;
+    const fenceLines = new Set<number>();
+    for (const token of md.parse(source, {})) {
+        if (token.type === 'fence' && token.map) {
+            for (let line = token.map[0]; line < token.map[1]; line++) fenceLines.add(line);
+        }
+    }
+    return source.split('\n').some((line, index) => line.includes('\t') && !fenceLines.has(index));
+}
+
 // ===== Edit Mode (Split View) =====
-function setEditMode(enabled: boolean) {
+function setEditMode(enabled: boolean, discardPreviewDraft = false) {
+    if (enabled && (isVersionPreviewMode || isSaving)) return;
+    if (enabled && isEditMode && !isPreviewEditMode) return;
+    const wasEditing = isEditMode;
+    if (enabled && isPreviewEditMode) {
+        const draft = discardPreviewDraft ? previewEditSource : getPreviewEditDraft();
+        if (draft === null) return;
+        currentContent = draft;
+        previewSourceMapping = null;
+        setMappedFormattingAvailability(false);
+        $('previewDraftRecovery')?.classList.remove('show');
+    }
     isEditMode = enabled;
     isPreviewEditMode = false;
     document.body.classList.toggle('edit-mode', enabled);
@@ -1294,11 +1544,8 @@ function setEditMode(enabled: boolean) {
 
     const saveTarget = (saveBtn?.closest('.tooltip') as HTMLElement | null) || saveBtn;
     const cancelTarget = (cancelBtn?.closest('.tooltip') as HTMLElement | null) || cancelBtn;
-    const editTarget = (editBtn?.closest('.tooltip') as HTMLElement | null) || editBtn;
-    const previewEditTarget = (previewEditBtn?.closest('.tooltip') as HTMLElement | null) || previewEditBtn;
-
-    if (editTarget) editTarget.classList.toggle('hidden', enabled);
-    if (previewEditTarget) previewEditTarget.classList.toggle('hidden', enabled);
+    editBtn?.setAttribute('aria-pressed', String(enabled));
+    previewEditBtn?.setAttribute('aria-pressed', 'false');
 
     if (saveTarget) saveTarget.classList.toggle('hidden', !enabled);
     if (cancelTarget) cancelTarget.classList.toggle('hidden', !enabled);
@@ -1309,10 +1556,10 @@ function setEditMode(enabled: boolean) {
     updateFormattingToolbarHeight();
 
     // In Split Edit the rendered side is editable too (WYSIWYG)
-    if (preview) preview.contentEditable = enabled ? 'true' : 'false';
+    if (preview) preview.contentEditable = 'false';
 
     if (enabled) {
-        originalContent = currentContent;
+        if (!wasEditing) originalContent = currentContent;
         activePane = 'editor';
 
         container?.classList.add('split-view');
@@ -1324,15 +1571,19 @@ function setEditMode(enabled: boolean) {
             container?.classList.remove('preview-left');
         }
 
-        if (editor) editor.value = currentContent;
+        if (editor) {
+            splitEditorSource = currentContent;
+            editor.value = currentContent;
+        }
+        // Re-render after entering split mode so the preview's safety baseline
+        // and editability are initialized even before the first source edit.
+        renderMarkdown(currentContent);
 
         // Cache line height and lock outer scroll after entering edit mode
         requestAnimationFrame(() => {
+            if (!isEditMode || isPreviewEditMode) return;
             updateCachedLineHeight();
             updateFormattingToolbarHeight();
-
-            enhancePreviewTablesForEditing();
-            initializePreviewHistory();
 
             // Lock outer scroll containers completely
             window.scrollTo(0, 0);
@@ -1347,7 +1598,7 @@ function setEditMode(enabled: boolean) {
                 container.scrollLeft = 0;
             }
 
-            if (editor) {
+            if (editor && activePane !== 'preview') {
                 editor.scrollTop = 0;
                 editor.scrollLeft = 0;
                 editor.focus({ preventScroll: true });
@@ -1360,6 +1611,9 @@ function setEditMode(enabled: boolean) {
         });
     } else {
         // Exit edit mode
+        previewSourceMapping = null;
+        setMappedFormattingAvailability(false);
+        $('previewDraftRecovery')?.classList.remove('show');
         previewUndoStack = [];
         previewRedoStack = [];
         if (previewToEditorTimer !== null) {
@@ -1374,10 +1628,261 @@ function setEditMode(enabled: boolean) {
     }
 
     updateStatusInfo();
+    mdToolbarController?.apply();
+    updateTextSizeButtonsState();
 }
 
 // ===== Preview Edit Mode (WYSIWYG) =====
+function restoreMarkdownImageSources(root: HTMLElement): void {
+    root.querySelectorAll('img').forEach(node => {
+        const source = node.getAttribute('data-md-original-src') || node.getAttribute('data-md-src');
+        if (source !== null) node.setAttribute('src', source);
+        node.removeAttribute('data-md-src');
+        node.removeAttribute('data-md-original-src');
+    });
+}
+
+function getPreviewEditHtml(preview: HTMLElement): string {
+    const clone = preview.cloneNode(true) as HTMLElement;
+    if (previewSourceMapping) clone.querySelectorAll(`[data-preview-source-notice="${previewSourceMapping.key}"]`).forEach(node => node.remove());
+    unwrapPreviewSourceRanges(clone, previewSourceMapping);
+    clone.querySelectorAll('mark.search-highlight').forEach(node => node.replaceWith(...Array.from(node.childNodes)));
+    restoreMarkdownImageSources(clone);
+    clone.querySelectorAll<HTMLElement>('.mermaid[data-mermaid-code]').forEach(node => {
+        node.textContent = decodeStoredFenceCode(node.getAttribute('data-mermaid-code')) || '';
+        node.removeAttribute('data-processed');
+    });
+    clone.querySelectorAll('.table-hover-tools, .heading-anchor, .code-block-header, .code-copy').forEach(node => node.remove());
+    clone.querySelectorAll('td, th').forEach(cellNode => {
+        const cell = cellNode as HTMLTableCellElement;
+        if ((cell.textContent || '').replace(/\u00a0/g, '').trim() === '') cell.innerHTML = '';
+    });
+    return clone.innerHTML;
+}
+
+function setMappedFormattingAvailability(limited: boolean): void {
+    const allowed = new Set(['undo', 'redo', 'decreaseTextSize', 'resetTextSize', 'increaseTextSize']);
+    document.querySelectorAll<HTMLButtonElement>('#formattingToolbar button[data-format]').forEach(button => {
+        if (limited && !allowed.has(button.dataset.format || '') && !button.disabled) {
+            button.disabled = true;
+            button.dataset.previewLimitedDisabled = 'true';
+        } else if (!limited && button.dataset.previewLimitedDisabled === 'true') {
+            button.disabled = false;
+            delete button.dataset.previewLimitedDisabled;
+        }
+    });
+}
+
+function renderPreviewForComparison(source: string): HTMLElement {
+    const env: any = { originalSource: source };
+    const tokens = md.parse(sanitizeMarkdownCopyLinkArtifacts(source), env);
+    addHeadingIds(tokens);
+    const root = document.createElement('div');
+    root.innerHTML = sanitizeRenderedMarkdownHtml(md.renderer.render(tokens, md.options, env));
+    return root;
+}
+
+function comparablePreviewHtml(root: HTMLElement): string {
+    root.querySelectorAll('.md-heading[id]').forEach(heading => heading.removeAttribute('id'));
+    root.normalize();
+    return getPreviewEditHtml(root);
+}
+
+function configurePreviewEditing(preview: HTMLElement, source: string, forceMapped = false): void {
+    previewSourceMapping = null;
+    preview.classList.remove('mapped-preview');
+    setMappedFormattingAvailability(false);
+    previewEditBaselineHtml = getPreviewEditHtml(preview);
+    previewEditBaselineMarkdown = turndownService.turndown(previewEditBaselineHtml);
+    const ordinaryRoundTrip = !hasUnsafePreviewEditSource(source) &&
+        getPreviewEditTrailingNewlines(source, previewEditBaselineMarkdown) !== null &&
+        !/<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(previewEditBaselineHtml);
+    if (!forceMapped && ordinaryRoundTrip) {
+        preview.contentEditable = 'true';
+        return;
+    }
+
+    const lines = [0];
+    for (let i = 0; i < source.length; i++) if (source[i] === '\n') lines.push(i + 1);
+    const blockTypes = new Set(['paragraph_open', 'heading_open', 'bullet_list_open', 'ordered_list_open', 'blockquote_open', 'table_open']);
+    const blocks: PreviewBlockRange[] = [];
+    if (sanitizeMarkdownCopyLinkArtifacts(source) === source) {
+        for (const token of md.parse(source, {})) {
+            if (token.level !== 0 || !token.map || !blockTypes.has(token.type)) continue;
+            blocks.push({
+                line: token.map[0],
+                start: lines[token.map[0]] ?? source.length,
+                end: lines[token.map[1]] ?? source.length,
+                tag: token.tag
+            });
+        }
+    }
+    previewSourceMapping = preparePreviewSourceMapping(preview, renderPreviewForComparison(source), source, blocks, previewEditBaselineHtml);
+    preview.classList.add('mapped-preview');
+    preview.contentEditable = 'true';
+    setMappedFormattingAvailability(isPreviewEditMode);
+    const notice = document.createElement('div');
+    notice.className = 'preview-source-notice';
+    notice.setAttribute('data-preview-source-notice', previewSourceMapping.key);
+    notice.setAttribute('contenteditable', 'false');
+    notice.innerHTML = previewSourceMapping.ranges.length
+        ? '为保护原文，仅可编辑可定位的文字；换行、格式和其他内容请在分屏源码中修改。 '
+        : '此文档不能安全定位可编辑文字，请在分屏源码中修改。 ';
+    if (isPreviewEditMode) notice.innerHTML += '<button type="button" data-preview-source-action="split">切换分屏</button>';
+    preview.insertBefore(notice, preview.firstChild);
+}
+
+function getMappedPreviewDraft(preview: HTMLElement): string | null {
+    const mapping = previewSourceMapping;
+    if (!mapping || mapping.composing || !hasMappedPreviewIntegrity(preview, mapping)) return null;
+    const values = previewSourceValues(preview, mapping);
+    return values ? mappedPreviewDraft(mapping, values, renderPreviewForComparison, comparablePreviewHtml) : null;
+}
+
+function hasMappedPreviewIntegrity(preview: HTMLElement, mapping: PreviewSourceMapping): boolean {
+    const clone = preview.cloneNode(true) as HTMLElement;
+    const wrappers = clone.querySelectorAll<HTMLElement>(`[data-preview-source-key="${mapping.key}"]`);
+    if (wrappers.length !== mapping.ranges.length) return false;
+    const seen = new Set<number>();
+    for (const wrapper of Array.from(wrappers)) {
+        const index = Number(wrapper.getAttribute('data-preview-source-index'));
+        if (!Number.isInteger(index) || !mapping.ranges[index] || seen.has(index)) return false;
+        seen.add(index);
+        wrapper.textContent = mapping.ranges[index].original;
+    }
+    return getPreviewEditHtml(clone) === mapping.previewBaselineHtml;
+}
+
+function validateMappedPreviewInput(preview: HTMLElement): string | null {
+    const mapping = previewSourceMapping;
+    if (!mapping || mapping.composing) return null;
+    if (!hasMappedPreviewIntegrity(preview, mapping)) {
+        showPreviewDraftRecovery(preview);
+        return null;
+    }
+    const values = previewSourceValues(preview, mapping);
+    if (values) {
+        const draft = mappedPreviewDraft(mapping, values, renderPreviewForComparison, comparablePreviewHtml);
+        if (draft !== null) {
+            mapping.accepted = values;
+            return draft;
+        }
+    }
+    const wrappers = preview.querySelectorAll<HTMLElement>(`[data-preview-source-key="${mapping.key}"]`);
+    if (wrappers.length !== mapping.ranges.length) {
+        showPreviewDraftRecovery(preview);
+        return null;
+    }
+    const selection = window.getSelection();
+    const anchor = selection?.anchorNode;
+    const anchorElement = anchor?.nodeType === Node.ELEMENT_NODE ? anchor as HTMLElement : anchor?.parentElement;
+    const active = anchorElement?.closest<HTMLElement>(`[data-preview-source-key="${mapping.key}"]`);
+    const offset = selection?.anchorOffset ?? 0;
+    const seen = new Set<number>();
+    for (const wrapper of Array.from(wrappers)) {
+        const index = Number(wrapper.getAttribute('data-preview-source-index'));
+        if (!Number.isInteger(index) || mapping.accepted[index] === undefined || seen.has(index)) {
+            showPreviewDraftRecovery(preview);
+            return null;
+        }
+        seen.add(index);
+    }
+    for (const wrapper of Array.from(wrappers)) {
+        const index = Number(wrapper.getAttribute('data-preview-source-index'));
+        if (wrapper.textContent !== mapping.accepted[index] || wrapper.childElementCount) wrapper.textContent = mapping.accepted[index];
+    }
+    if (active?.firstChild && selection) {
+        const range = document.createRange();
+        range.setStart(active.firstChild, Math.min(offset, active.firstChild.textContent?.length || 0));
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+    }
+    showToast('刚才的输入无法安全保存，已撤回该次输入；可切换到分屏源码修改。', true);
+    return null;
+}
+
+function showPreviewDraftRecovery(preview: HTMLElement): void {
+    let panel = $('previewDraftRecovery');
+    if (!panel) {
+        panel = document.createElement('section');
+        panel.id = 'previewDraftRecovery';
+        panel.className = 'preview-draft-recovery';
+        panel.setAttribute('role', 'alert');
+        panel.innerHTML = '<p>当前预览无法安全转换。请先复制下面的 HTML 草稿，保存到临时文本；不要用它直接覆盖 Markdown 原文。</p>' +
+            '<textarea aria-label="预览草稿 HTML" readonly></textarea>' +
+            '<div><button type="button" data-action="copy">复制 HTML 草稿</button> ' +
+            '<button type="button" data-action="switch">已备份；放弃预览改动并打开分屏</button> ' +
+            '<button type="button" data-action="close">返回预览</button></div>';
+        document.body.appendChild(panel);
+        panel.querySelector<HTMLButtonElement>('[data-action="copy"]')?.addEventListener('click', async () => {
+            const value = getPreviewEditHtml(preview);
+            const textarea = panel?.querySelector<HTMLTextAreaElement>('textarea');
+            if (textarea) textarea.value = value;
+            const copied = await Utils.writeToClipboardAsync(value);
+            showToast(copied ? '已复制 HTML 草稿，请保存到临时文本。' : '复制失败，请手动选择并复制文本框内容。', !copied);
+        });
+        panel.querySelector<HTMLButtonElement>('[data-action="close"]')?.addEventListener('click', () => panel?.classList.remove('show'));
+        panel.querySelector<HTMLButtonElement>('[data-action="switch"]')?.addEventListener('click', () => {
+            if (isSaving) {
+                showToast('正在保存，请等待保存结果后再切换。', true);
+                return;
+            }
+            const textarea = panel?.querySelector<HTMLTextAreaElement>('textarea');
+            const latest = getPreviewEditHtml(preview);
+            if (textarea && textarea.value !== latest) {
+                textarea.value = latest;
+                showToast('草稿有新的修改，请重新复制备份后再切换。', true);
+                return;
+            }
+            // This explicit action discards only the preview draft after the user has backed it up.
+            panel?.classList.remove('show');
+            if (isEditMode && !isPreviewEditMode) {
+                const editor = $('markdownEditor') as HTMLTextAreaElement | null;
+                if (editor) {
+                    splitEditorSource = reconcileEditorLineEndings(splitEditorSource, editor.value);
+                    currentContent = splitEditorSource;
+                }
+                previewSourceMapping = null;
+                renderMarkdown(currentContent);
+                scheduleMarkdownAutoSave();
+            } else {
+                setEditMode(true, true);
+            }
+        });
+    }
+    const textarea = panel.querySelector<HTMLTextAreaElement>('textarea');
+    if (textarea) textarea.value = getPreviewEditHtml(preview);
+    const switchButton = panel.querySelector<HTMLButtonElement>('[data-action="switch"]');
+    if (switchButton) switchButton.textContent = isPreviewEditMode
+        ? '已备份；放弃预览改动并打开分屏'
+        : '已备份；放弃预览改动并保留源码';
+    panel.classList.add('show');
+}
+
+function hasUnsavedMarkdownEdits(): boolean {
+    if (!isEditMode) return currentContent !== originalContent;
+    if (isPreviewEditMode) {
+        const preview = $('markdownPreview');
+        return currentContent !== originalContent || (!!preview && getPreviewEditHtml(preview) !== previewEditBaselineHtml);
+    }
+    const preview = $('markdownPreview');
+    if (previewSourceMapping && preview) {
+        const draft = getMappedPreviewDraft(preview);
+        if (draft === null || draft !== splitEditorSource) return true;
+    }
+    const editor = $('markdownEditor') as HTMLTextAreaElement | null;
+    return !!editor && reconcileEditorLineEndings(splitEditorSource, editor.value) !== originalContent;
+}
+
 function setPreviewEditMode(enabled: boolean) {
+    if (enabled && (isVersionPreviewMode || isSaving)) return;
+    if (enabled && isEditMode && isPreviewEditMode) return;
+    const wasEditing = isEditMode;
+    if (enabled && isEditMode) {
+        if (!pushPreviewEditsToEditor()) return;
+        flushLivePreviewRender();
+    }
     isPreviewEditMode = enabled;
     isEditMode = enabled;
     document.body.classList.toggle('edit-mode', enabled);
@@ -1392,11 +1897,8 @@ function setPreviewEditMode(enabled: boolean) {
 
     const saveTarget = (saveBtn?.closest('.tooltip') as HTMLElement | null) || saveBtn;
     const cancelTarget = (cancelBtn?.closest('.tooltip') as HTMLElement | null) || cancelBtn;
-    const editTarget = (editBtn?.closest('.tooltip') as HTMLElement | null) || editBtn;
-    const previewEditTarget = (previewEditBtn?.closest('.tooltip') as HTMLElement | null) || previewEditBtn;
-
-    if (editTarget) editTarget.classList.toggle('hidden', enabled);
-    if (previewEditTarget) previewEditTarget.classList.toggle('hidden', enabled);
+    editBtn?.setAttribute('aria-pressed', 'false');
+    previewEditBtn?.setAttribute('aria-pressed', String(enabled));
 
     if (saveTarget) saveTarget.classList.toggle('hidden', !enabled);
     if (cancelTarget) cancelTarget.classList.toggle('hidden', !enabled);
@@ -1407,7 +1909,8 @@ function setPreviewEditMode(enabled: boolean) {
     updateFormattingToolbarHeight();
 
     if (enabled) {
-        originalContent = currentContent;
+        if (!wasEditing) originalContent = currentContent;
+        previewEditSource = currentContent;
 
         container?.classList.remove('split-view');
         container?.classList.add('preview-edit');
@@ -1417,12 +1920,16 @@ function setPreviewEditMode(enabled: boolean) {
         renderMarkdown(currentContent);
 
         if (preview) {
-            preview.contentEditable = 'true';
-            enhancePreviewTablesForEditing();
+            configurePreviewEditing(preview, currentContent);
             initializePreviewHistory();
             preview.focus({ preventScroll: true });
         }
     } else {
+        previewSourceMapping = null;
+        setMappedFormattingAvailability(false);
+        $('previewDraftRecovery')?.classList.remove('show');
+        previewEditBaselineHtml = null;
+        previewEditBaselineMarkdown = null;
         // Exit preview edit mode
         if (preview) {
             preview.contentEditable = 'false';
@@ -1441,6 +1948,8 @@ function setPreviewEditMode(enabled: boolean) {
     }
 
     updateStatusInfo();
+    mdToolbarController?.apply();
+    updateTextSizeButtonsState();
 }
 
 function ensureVersionPreviewBanner(): HTMLElement {
@@ -1498,6 +2007,8 @@ function setVersionPreviewMode(enabled: boolean, label?: string) {
             banner.classList.add('hidden');
         }
     }
+    mdToolbarController?.apply();
+    updateTextSizeButtonsState();
 }
 
 let lastEditorScrollTop = 0;
@@ -1573,6 +2084,7 @@ function previewToMarkdown(): string {
     });
 
     const clone = preview.cloneNode(true) as HTMLElement;
+    restoreMarkdownImageSources(clone);
     clone.querySelectorAll('.table-hover-tools').forEach(node => node.remove());
     clone.querySelectorAll('.heading-anchor').forEach(node => node.remove());
     clone.querySelectorAll('.code-block-header').forEach(node => node.remove());
@@ -1584,6 +2096,28 @@ function previewToMarkdown(): string {
         }
     });
     return turndownService.turndown(clone.innerHTML);
+}
+
+function getPreviewEditDraft(): string | null {
+    const preview = $('markdownPreview');
+    if (!preview || previewEditBaselineHtml === null || previewEditBaselineMarkdown === null) {
+        showToast('预览编辑状态尚未就绪，请稍后重试。', true);
+        return null;
+    }
+    if (previewSourceMapping) {
+        const draft = getMappedPreviewDraft(preview);
+        if (draft === null && !previewSourceMapping.composing) showPreviewDraftRecovery(preview);
+        else if (draft === null) showToast('正在输入文字，请完成输入后再保存或切换。', true);
+        return draft;
+    }
+    const html = getPreviewEditHtml(preview);
+    if (html === previewEditBaselineHtml) return previewEditSource;
+    const trailingNewlines = getPreviewEditTrailingNewlines(previewEditSource, previewEditBaselineMarkdown);
+    if (hasUnsafePreviewEditSource(previewEditSource) || trailingNewlines === null || /<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(html)) {
+        showPreviewDraftRecovery(preview);
+        return null;
+    }
+    return turndownService.turndown(html) + trailingNewlines;
 }
 
 // Split Edit: schedule pushing rendered-side edits into the markdown textarea
@@ -1599,22 +2133,51 @@ function schedulePreviewToEditorSync() {
 
 // Split Edit: write the rendered side back into the textarea WITHOUT re-rendering the preview
 // (re-rendering would reset the caret while the user is typing there).
-function pushPreviewEditsToEditor() {
+function pushPreviewEditsToEditor(validatedDraft?: string): boolean {
     if (previewToEditorTimer !== null) {
         window.clearTimeout(previewToEditorTimer);
         previewToEditorTimer = null;
     }
     if (!isEditMode || isPreviewEditMode) {
-        return;
+        return true;
     }
     const editor = $('markdownEditor') as HTMLTextAreaElement | null;
     if (!editor) {
-        return;
+        return true;
     }
 
-    const markdown = sanitizeMarkdownCopyLinkArtifacts(previewToMarkdown());
-    if (markdown === editor.value) {
-        return;
+    const preview = $('markdownPreview');
+    if (!preview) return true;
+    let markdown: string;
+    const mapped = previewSourceMapping !== null;
+    if (mapped) {
+        if (previewSourceMapping?.composing) {
+            showToast('正在输入文字，请完成输入后再保存或切换。', true);
+            return false;
+        }
+        // Never overwrite a source edit made since the preview was last synchronized.
+        if (editor.value !== splitEditorSource.replace(/\r\n|\r/g, '\n')) {
+            showPreviewDraftRecovery(preview);
+            return false;
+        }
+        const draft = validatedDraft ?? getMappedPreviewDraft(preview);
+        if (draft === null) {
+            showPreviewDraftRecovery(preview);
+            return false;
+        }
+        if (draft === splitEditorSource) return true;
+        markdown = draft;
+    } else {
+        if (splitPreviewTrailingNewlines === null || splitPreviewBaselineHtml === null) return true;
+        const html = getPreviewEditHtml(preview);
+        if (html === splitPreviewBaselineHtml) return true;
+        if (/<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(html)) {
+            showToast('预览包含无法安全保存的格式，请使用源代码编辑。');
+            return false;
+        }
+        markdown = sanitizeMarkdownCopyLinkArtifacts(previewToMarkdown()) + splitPreviewTrailingNewlines;
+        if (markdown === editor.value) return true;
+        splitPreviewBaselineHtml = html;
     }
 
     // Let Ctrl+Z in the text side undo this change
@@ -1625,17 +2188,28 @@ function pushPreviewEditsToEditor() {
     if (scrollTimeout) clearTimeout(scrollTimeout);
     scrollTimeout = setTimeout(() => { activeScrollSource = null; }, 400);
 
-    editor.value = markdown; // programmatic set: no 'input' event, so no re-render
-    currentContent = markdown;
+    splitEditorSource = mapped ? markdown : reconcileEditorLineEndings(splitEditorSource, markdown);
+    editor.value = splitEditorSource; // programmatic set: no 'input' event, so no re-render
+    currentContent = splitEditorSource;
     refreshEditorLineCache();
     updateStatusInfo();
     scheduleMarkdownAutoSave();
+    return true;
 }
 
 function performSave(exitAfterSave = false, silent = false) {
-    if (isSaving || !isEditMode) return;
+    if (isSaving || !isEditMode || isVersionPreviewMode) return;
+    if (!pushPreviewEditsToEditor()) return;
     flushLivePreviewRender();
-    pushPreviewEditsToEditor();
+    let previewMarkdown: string | null = null;
+    let previewHtml: string | null = null;
+    if (isPreviewEditMode) {
+        const preview = $('markdownPreview');
+        if (!preview) return;
+        previewHtml = getPreviewEditHtml(preview);
+        previewMarkdown = getPreviewEditDraft();
+        if (previewMarkdown === null) return;
+    }
     isSaving = true;
     shouldExitEditMode = exitAfterSave;
     setButtonsEnabled(false);
@@ -1650,12 +2224,15 @@ function performSave(exitAfterSave = false, silent = false) {
 
     if (isPreviewEditMode) {
         rememberPreviewEditScroll();
-        currentContent = previewToMarkdown();
-    } else if (editorEl) {
-        currentContent = editorEl.value;
+        currentContent = previewMarkdown as string;
+        pendingSavedPreviewHtml = previewHtml;
+    } else {
+        if (editorEl) {
+            currentContent = reconcileEditorLineEndings(splitEditorSource, editorEl.value);
+            splitEditorSource = currentContent;
+        }
     }
 
-    currentContent = sanitizeMarkdownCopyLinkArtifacts(currentContent);
     if (editorEl && editorEl.value !== currentContent) {
         editorEl.value = currentContent;
     }
@@ -1672,11 +2249,13 @@ function scheduleMarkdownAutoSave() {
     autoSaveTimer = setTimeout(() => {
         autoSaveTimer = null;
         if (isSaving) { scheduleMarkdownAutoSave(); return; }
-        if (isPreviewEditMode || currentContent !== originalContent) performSave(false, true);
+        const preview = $('markdownPreview');
+        if (isPreviewEditMode ? currentContent !== originalContent || (!!preview && getPreviewEditHtml(preview) !== previewEditBaselineHtml) : currentContent !== originalContent) performSave(false, true);
     }, delay);
 }
 
 function cancelEdit() {
+    if (isSaving || isVersionPreviewMode) return;
     if (livePreviewTimer) {
         clearTimeout(livePreviewTimer);
         livePreviewTimer = null;
@@ -1688,6 +2267,7 @@ function cancelEdit() {
     currentContent = originalContent;
     const editor = $('markdownEditor') as HTMLTextAreaElement;
     if (editor) {
+        splitEditorSource = originalContent;
         editor.value = originalContent;
     }
     const preview = $('markdownPreview');
@@ -1738,12 +2318,28 @@ function flushLivePreviewRender() {
 function onEditorInput() {
     const editor = $('markdownEditor') as HTMLTextAreaElement;
     if (!editor) return;
+    const preview = $('markdownPreview');
+    if (!isPreviewEditMode && previewSourceMapping && preview) {
+        const draft = getMappedPreviewDraft(preview);
+        if (draft === null || draft !== splitEditorSource) {
+            showPreviewDraftRecovery(preview);
+            return;
+        }
+        // The source now owns the next edit; prevent typing into the stale rendered ranges.
+        preview.querySelectorAll('[data-preview-source-key]').forEach(node => node.setAttribute('contenteditable', 'false'));
+        preview.contentEditable = 'false';
+        previewSourceMapping = null;
+        splitPreviewBaselineHtml = null;
+    }
+    scrollDiagnosticUntil = Date.now() + 1000;
+    reportScrollDiagnostic('editor-input', true);
 
     activeScrollSource = 'editor';
     if (scrollTimeout) clearTimeout(scrollTimeout);
     scrollTimeout = setTimeout(() => { activeScrollSource = null; }, 300);
 
-    currentContent = editor.value;
+    currentContent = reconcileEditorLineEndings(splitEditorSource, editor.value);
+    splitEditorSource = currentContent;
     scheduleMarkdownAutoSave();
 
     // Adaptive debounced live preview (scales with document size)
@@ -1910,9 +2506,15 @@ function refreshEditorLineCache() {
 }
 
 function refreshSyncMetrics() {
+    updateCachedLineHeight();
+    if (!currentSettings.syncScroll || isPreviewEditMode || !isEditMode) {
+        cachedDataLineElements = [];
+        cachedPreviewLineMap = [];
+        cachedEditorLineMap = [];
+        return;
+    }
     refreshDataLineCache();
     refreshEditorLineCache();
-    updateCachedLineHeight();
 }
 
 function refreshDataLineCache() {
@@ -2000,7 +2602,8 @@ const throttledSyncEditorToPreview = throttleRAF(syncEditorToPreview);
 const throttledSyncPreviewToEditor = throttleRAF(syncPreviewToEditor);
 
 // ===== UI Helpers =====
-function showToast(message: string) {
+let toastHideTimer: ReturnType<typeof setTimeout> | null = null;
+function showToast(message: string, error = false) {
     let toast = $('toastNotification');
     if (!toast) {
         toast = document.createElement('div');
@@ -2019,8 +2622,15 @@ function showToast(message: string) {
     if (toast) {
         const toastText = toast.querySelector('.toast-text') || $('toastText');
         if (toastText) toastText.textContent = message;
+        const icon = toast.querySelector('.toast-icon-wrapper svg');
+        if (icon) icon.innerHTML = error
+            ? '<line x1="12" y1="6" x2="12" y2="13"></line><line x1="12" y1="18" x2="12" y2="18"></line>'
+            : '<polyline points="20 6 9 17 4 12"></polyline>';
+        toast.classList.toggle('error', error);
+        toast.setAttribute('role', error ? 'alert' : 'status');
         toast.classList.add('show');
-        setTimeout(() => toast!.classList.remove('show'), 2000);
+        if (toastHideTimer) clearTimeout(toastHideTimer);
+        toastHideTimer = setTimeout(() => toast!.classList.remove('show'), error ? 4500 : 2000);
     }
 }
 
@@ -2406,6 +3016,13 @@ function updateTextDirection(sampleText?: string) {
 function applySettings(settings: any, persist = false) {
     if (!settings) return;
     currentSettings = { ...currentSettings, ...settings };
+    applyMarkdownAppearance(currentSettings.appearance);
+    applyExternalMarkdownTheme(currentSettings.theme);
+    for (const [key, value] of Object.entries(currentSettings.appearance || {})) {
+        const id = `txt${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+        const input = document.getElementById(id) as HTMLInputElement | null;
+        if (input && input !== document.activeElement && typeof value === 'string') input.value = value;
+    }
 
     Utils.showPopupsEnabled = (currentSettings as any).showPopups !== false;
 
@@ -2511,8 +3128,11 @@ function applySettings(settings: any, persist = false) {
     }
 
     if (persist) {
-        vscode.postMessage({ command: 'updateSettings', settings: currentSettings });
+        const { theme: _theme, ...settingsToSave } = currentSettings;
+        vscode.postMessage({ command: 'updateSettings', settings: settingsToSave });
     }
+    mdToolbarController?.apply();
+    updateTextSizeButtonsState();
 }
 
 function updateTextSizeButtonsState() {
@@ -2649,6 +3269,10 @@ function adjustPreviewHeadingLevel(delta: number) {
 }
 
 function createMdSettingsDefinitions(): SettingDefinition[] {
+    const appearanceValue = (key: keyof MarkdownAppearanceSettings, value: string) => {
+        currentSettings.appearance = { ...(currentSettings.appearance || {}), [key]: value };
+        applySettings(currentSettings, true);
+    };
     return [
         {
             id: 'chkWordWrap',
@@ -2826,6 +3450,138 @@ function createMdSettingsDefinitions(): SettingDefinition[] {
                 I18n.setLanguage('zh', true);
             },
             defaultValue: I18n.getLanguageSetting() === 'zh'
+        },
+        {
+            id: 'txtMarkBackgroundColor',
+            label: I18n.getLanguage() === 'zh' ? '高亮背景色' : 'Highlight background',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markBackgroundColor || '#FF4E00',
+            placeholder: '#FF4E00',
+            tooltip: 'Background color for standard <mark> highlights, for example #FF4E00.',
+            onChange: (val: string) => appearanceValue('markBackgroundColor', val)
+        },
+        {
+            id: 'txtMarkTextColor',
+            label: I18n.getLanguage() === 'zh' ? '高亮文字颜色' : 'Highlight text color',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markTextColor || 'inherit',
+            placeholder: 'inherit',
+            tooltip: 'Text color for <mark> highlights, or inherit to follow the preview text color.',
+            onChange: (val: string) => appearanceValue('markTextColor', val)
+        },
+        {
+            id: 'txtMarkFontWeight',
+            label: I18n.getLanguage() === 'zh' ? '高亮文字粗细' : 'Highlight weight',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markFontWeight || 'inherit',
+            placeholder: 'inherit',
+            tooltip: 'Font weight for <mark> highlights, for example 700 or inherit.',
+            onChange: (val: string) => appearanceValue('markFontWeight', val)
+        },
+        {
+            id: 'txtMarkPadding',
+            label: I18n.getLanguage() === 'zh' ? '高亮内边距' : 'Highlight padding',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markPadding || '0 2px',
+            placeholder: '0 2px',
+            tooltip: 'Padding around <mark> highlights, for example 0 2px.',
+            onChange: (val: string) => appearanceValue('markPadding', val)
+        },
+        {
+            id: 'txtMarkBorderRadius',
+            label: I18n.getLanguage() === 'zh' ? '高亮圆角' : 'Highlight radius',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.markBorderRadius || '2px',
+            placeholder: '2px',
+            tooltip: 'Border radius for <mark> highlights, for example 2px.',
+            onChange: (val: string) => appearanceValue('markBorderRadius', val)
+        },
+        {
+            id: 'txtHeadingColor',
+            label: I18n.getLanguage() === 'zh' ? '标题颜色' : 'Heading color',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.headingColor || '#569CD6',
+            placeholder: '#569CD6',
+            tooltip: 'Color for all Markdown preview heading levels h1-h6, for example #569CD6.',
+            onChange: (val: string) => appearanceValue('headingColor', val)
+        },
+        {
+            id: 'txtPreviewBackgroundColor',
+            label: I18n.getLanguage() === 'zh' ? '预览背景色' : 'Preview background',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.previewBackgroundColor || '',
+            placeholder: 'follow IDE theme',
+            tooltip: 'Preview background color. Leave empty to follow the IDE theme.',
+            onChange: (val: string) => appearanceValue('previewBackgroundColor', val)
+        },
+        {
+            id: 'txtPreviewTextColor',
+            label: I18n.getLanguage() === 'zh' ? '预览文字颜色' : 'Preview text color',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text setting-text-wide',
+            defaultTextValue: currentSettings.appearance?.previewTextColor || '',
+            placeholder: 'follow IDE theme',
+            tooltip: 'Preview text color. Leave empty to follow the IDE theme.',
+            onChange: (val: string) => appearanceValue('previewTextColor', val)
+        },
+        {
+            id: 'txtEditorFontSize',
+            label: I18n.getLanguage() === 'zh' ? '编辑器字号' : 'Editor font size',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.editorFontSize || '16px',
+            placeholder: '16px',
+            tooltip: 'Font size for the left Markdown editor pane, for example 16px.',
+            onChange: (val: string) => appearanceValue('editorFontSize', val)
+        },
+        {
+            id: 'txtEditorLineHeight',
+            label: I18n.getLanguage() === 'zh' ? '编辑器行高' : 'Editor line height',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.editorLineHeight || '1.8',
+            placeholder: '1.8',
+            tooltip: 'Line height for the left Markdown editor pane, for example 1.8.',
+            onChange: (val: string) => appearanceValue('editorLineHeight', val)
+        },
+        {
+            id: 'txtPreviewFontSize',
+            label: I18n.getLanguage() === 'zh' ? '预览字号' : 'Preview font size',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.previewFontSize || '',
+            placeholder: '17px',
+            tooltip: 'Font size for the right Markdown preview pane, for example 17px.',
+            onChange: (val: string) => appearanceValue('previewFontSize', val)
+        },
+        {
+            id: 'txtPreviewLineHeight',
+            label: I18n.getLanguage() === 'zh' ? '预览行高' : 'Preview line height',
+            section: I18n.t('settings.sectionAppearance', 'Appearance'),
+            inputType: 'text' as const,
+            className: 'setting-text',
+            defaultTextValue: currentSettings.appearance?.previewLineHeight || '',
+            placeholder: '1.8',
+            tooltip: 'Line height for the right Markdown preview pane, for example 1.8.',
+            onChange: (val: string) => appearanceValue('previewLineHeight', val)
         }
     ];
 }
@@ -2944,9 +3700,18 @@ function initializeSettings() {
 
     // Initialize manager
     mdSettingsManager = new SettingsManager('openSettingsButton', 'settingsPanel', 'settingsCancelButton', settingsDefs);
+    const customize = document.createElement('button');
+    customize.id = 'customizeMdToolbarButton';
+    customize.className = 'toggle-button';
+    const updateLabel = () => { customize.textContent = I18n.getLanguage() === 'zh' ? '自定义工具栏…' : 'Customize toolbar…'; };
+    updateLabel();
+    I18n.onLanguageChange(updateLabel);
+    customize.addEventListener('click', () => { mdSettingsManager?.close(); mdToolbarController?.open(); });
+    $('settingsPanel')!.insertBefore(customize, $('settingsPanel')!.firstChild);
 }
 
 function reorderMdToolbarButtons() {
+    if (mdToolbarController) return;
     if (!toolbarManager) return;
 
     const toolbar = document.getElementById('toolbar');
@@ -2989,6 +3754,27 @@ window.addEventListener('message', (event) => {
     const m = event.data;
 
     switch (m.command) {
+        case 'externalFileChanged':
+            showToast('文件已被其他程序修改；当前编辑内容已保留，请先处理冲突或重新加载。', true);
+            break;
+        case 'toolbarLayoutUpdated':
+            mdToolbarController?.receive(m.layout, m.revision, !!currentSettings.moveMdButtonsToEnd);
+            updateTextSizeButtonsState();
+            break;
+        case 'toolbarLayoutSaved':
+            mdToolbarController?.saved(m.requestId, m.ok, m.message);
+            updateTextSizeButtonsState();
+            break;
+        case 'webviewError':
+            if (isSaving) {
+                isSaving = false;
+                shouldExitEditMode = false;
+                pendingSavedPreviewHtml = null;
+                setButtonsEnabled(true);
+            }
+            showToast(m.message || '请求被拒绝：输入超出安全限制', true);
+            break;
+
         case 'initMarkdown':
             const wasPreviewEditMode = isPreviewEditMode;
             const previewEditScrollState = wasPreviewEditMode
@@ -2999,17 +3785,18 @@ window.addEventListener('message', (event) => {
 
             currentContent = m.content || '';
             originalContent = currentContent;
+            previewEditSource = currentContent;
             lastSaveContent = currentContent;
             documentUri = m.documentUri || '';
             documentDirUri = m.documentDirUri || '';
             workspaceFolderUri = m.workspaceFolderUri || null;
             resetImageResolutionState();
+            previewSourceMapping = null;
             renderMarkdown(currentContent);
             if (wasPreviewEditMode) {
                 const preview = $('markdownPreview');
                 if (preview) {
-                    preview.contentEditable = 'true';
-                    enhancePreviewTablesForEditing();
+                    configurePreviewEditing(preview, currentContent);
                     initializePreviewHistory();
                 }
                 restorePreviewEditScroll(previewEditScrollState);
@@ -3026,18 +3813,35 @@ window.addEventListener('message', (event) => {
             applySettings(m.settings, false);
             break;
 
+        case 'setMarkdownTheme':
+            applySettings({ theme: m.theme }, false);
+            break;
+
         case 'saveResult':
             isSaving = false;
             setButtonsEnabled(true);
             if (m.ok) {
+                const preview = $('markdownPreview');
+                const editor = $('markdownEditor') as HTMLTextAreaElement | null;
+                const newerDraft = isPreviewEditMode && preview && pendingSavedPreviewHtml !== null
+                    ? getPreviewEditHtml(preview) !== pendingSavedPreviewHtml
+                    : !!editor && reconcileEditorLineEndings(splitEditorSource, editor.value) !== lastSaveContent;
                 if (m.silent) {
                     Utils.showToast(I18n.t('toast.autosaved', 'Autosaved'), true, 1000);
+                } else if (newerDraft) {
+                    showToast('已保存之前的内容，保存期间的新修改仍保留在编辑器中。', true);
                 } else {
                     showToast(I18n.t('toast.saved', 'Saved'));
                 }
-                originalContent = lastSaveContent || currentContent;
-                if (currentContent !== originalContent) scheduleMarkdownAutoSave();
-                if (shouldExitEditMode) {
+                originalContent = lastSaveContent;
+                if (isPreviewEditMode && pendingSavedPreviewHtml !== null) {
+                    previewEditSource = lastSaveContent;
+                    previewEditBaselineHtml = pendingSavedPreviewHtml;
+                    previewEditBaselineMarkdown = turndownService.turndown(pendingSavedPreviewHtml);
+                    pendingSavedPreviewHtml = null;
+                    if (preview && getPreviewEditHtml(preview) !== previewEditBaselineHtml) scheduleMarkdownAutoSave();
+                } else if (currentContent !== originalContent) scheduleMarkdownAutoSave();
+                if (shouldExitEditMode && !newerDraft) {
                     if (isPreviewEditMode) {
                         setPreviewEditMode(false);
                     } else {
@@ -3055,7 +3859,8 @@ window.addEventListener('message', (event) => {
                 }
                 shouldExitEditMode = false;
             } else {
-                showToast(I18n.t('toast.errorSaving', 'Error saving'));
+                pendingSavedPreviewHtml = null;
+                showToast(m.error || I18n.t('toast.errorSaving', 'Error saving'), true);
                 shouldExitEditMode = false;
             }
             break;
@@ -3097,7 +3902,12 @@ function wireButtons() {
     });
 
     // Inject tooltip if variables are present
-    InfoTooltip.inject('toolbar', (window as any).viewImgUri, (window as any).logoSvgUri, 'GitHub Flavored Markdown');
+    const info = InfoTooltip.inject('toolbar', (window as any).viewImgUri, (window as any).logoSvgUri, 'GitHub Flavored Markdown');
+    if (info) info.id = 'mdToolbarInfo';
+    mdToolbarController = new MdToolbarController({
+        context: () => ({ editing: isEditMode, history: isVersionPreviewMode, saving: isSaving, mdEnabled: !!currentSettings.isMdEnabled }),
+        save: (layout, requestId, revision) => vscode.postMessage({ command: 'saveMdToolbarLayout', layout, requestId, revision })
+    });
 
     // Theme manager
     new ThemeManager('toggleBackgroundButton', {
@@ -3143,8 +3953,7 @@ function buildToolbarButtons() {
             label: I18n.t('toolbar.editFile', 'Edit File'),
             tooltip: I18n.t('toolbar.editFileMdTooltip', 'Edit File in Vscode Default Editor'),
             onClick: () => {
-                isPreviewView = !isPreviewView;
-                vscode.postMessage({ command: 'toggleView', isPreviewView });
+                vscode.postMessage({ command: 'toggleView', isPreviewView: false, hasUnsavedChanges: hasUnsavedMarkdownEdits() });
             }
         },
         {
@@ -3358,6 +4167,7 @@ function buildToolbarButtons() {
 
 // ===== Keyboard Shortcuts =====
 document.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented) return;
     const isCmdOrCtrl = e.ctrlKey || e.metaKey;
 
     // True in Preview Edit mode, or in Split Edit while the rendered side has focus
@@ -3832,6 +4642,7 @@ function applyFormat(action: string) {
     pushUndoState(editor);
     switch (action) {
         case 'bold': wrapSelection(editor, '**', '**'); break;
+        case 'highlight': wrapSelection(editor, '<mark>', '</mark>'); break;
         case 'italic': wrapSelection(editor, '*', '*'); break;
         case 'strikethrough': wrapSelection(editor, '~~', '~~'); break;
         case 'inlineCode': wrapSelection(editor, '`', '`'); break;
@@ -4408,6 +5219,11 @@ function applyWysiwygFormat(action: string) {
         performPreviewRedo();
         return;
     }
+    const protectedSplitPreview = isEditMode && !isPreviewEditMode && splitPreviewTrailingNewlines === null;
+    if ((previewSourceMapping || protectedSplitPreview) && !['decreaseTextSize', 'resetTextSize', 'increaseTextSize'].includes(action)) {
+        showToast('为保护原文，请在分屏源码中修改格式或结构。', true);
+        return;
+    }
 
     const needsManualHistoryCapture = action === 'table' || tableControlActions.includes(action);
     const beforeSnapshot = needsManualHistoryCapture ? getPreviewSnapshot() : '';
@@ -4608,17 +5424,50 @@ function wireEditor() {
     editor.addEventListener('blur', flushLivePreviewRender);
 
     // Track which side of Split Edit the user last clicked (drives toolbar behavior)
-    editor.addEventListener('focus', () => { activePane = 'editor'; });
+    editor.addEventListener('focus', () => {
+        if (!isPreviewEditMode && previewSourceMapping) pushPreviewEditsToEditor();
+        activePane = 'editor';
+    });
     if (preview) {
-        preview.addEventListener('focus', () => { activePane = 'preview'; });
-        preview.addEventListener('blur', pushPreviewEditsToEditor);
+        preview.addEventListener('focusin', () => { activePane = 'preview'; });
+        preview.addEventListener('click', (event) => {
+            if (isEditMode && previewSourceMapping) {
+                const target = event.target as HTMLElement | null;
+                if (!target || target.closest(`[data-preview-source-key="${previewSourceMapping.key}"]`) ||
+                    target.closest('a, button, input, img, [data-preview-source-notice]')) return;
+                const container = target.closest<HTMLElement>('td, th, p, li, h1, h2, h3, h4, h5, h6');
+                if (container && target === container) {
+                    const editable = container.querySelectorAll<HTMLElement>(`[data-preview-source-key="${previewSourceMapping.key}"]`);
+                    // Do not guess between fragments or redirect a click on unmapped text.
+                    if (editable.length === 1 && container.textContent?.trim() === editable[0].textContent?.trim()) {
+                        preview.focus({ preventScroll: true });
+                        const selection = window.getSelection();
+                        const range = document.createRange();
+                        range.selectNodeContents(editable[0]);
+                        range.collapse(false);
+                        selection?.removeAllRanges();
+                        selection?.addRange(range);
+                    }
+                }
+            }
+        });
+        preview.addEventListener('blur', () => pushPreviewEditsToEditor());
     }
 
     editor.addEventListener('scroll', throttledSyncEditorToPreview, { passive: true });
+    editor.addEventListener('scroll', () => reportScrollDiagnostic('editor-scroll'), { passive: true });
 
     if (preview) {
         preview.addEventListener('scroll', throttledSyncPreviewToEditor, { passive: true });
+        preview.addEventListener('scroll', () => reportScrollDiagnostic('preview-scroll'), { passive: true });
     }
+
+    $('content')?.addEventListener('scroll', () => reportScrollDiagnostic('content-scroll'), { passive: true });
+    document.addEventListener('scroll', event => {
+        if (event.target === document || event.target === document.documentElement || event.target === document.body) {
+            reportScrollDiagnostic('document-scroll');
+        }
+    }, { passive: true, capture: true });
 
     window.addEventListener('resize', refreshSyncMetrics);
 
@@ -4729,6 +5578,12 @@ function wireEditor() {
             return;
         }
 
+        if (isMod && e.altKey && e.shiftKey && e.code === 'Digit3') {
+            e.preventDefault();
+            if (editor.selectionStart !== editor.selectionEnd) applyFormat('highlight');
+            return;
+        }
+
         // Formatting shortcuts
         if (isMod) {
             let handled = true;
@@ -4801,34 +5656,25 @@ function wireEditor() {
 }
 
 // ===== Preview Interactions =====
-function toggleTaskListItemByIndex(index: number, isChecked: boolean) {
+function toggleTaskListItemByIndex(index: number, isChecked: boolean, renderedCount: number): boolean {
     const editor = $('markdownEditor') as HTMLTextAreaElement | null;
     const source = (isEditMode && !isPreviewEditMode && editor) ? editor.value : currentContent;
     const lines = source.split('\n');
-    let taskIndex = 0;
-    let found = false;
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const match = line.match(/^([ \t>]*(?:[-*+]|\d+\.)[ \t]+\[)([ xX])(\](?:[ \t]+.*)?)$/);
-        if (match) {
-            if (taskIndex === index) {
-                const newMark = isChecked ? 'x' : ' ';
-                lines[i] = `${match[1]}${newMark}${match[3]}`;
-                found = true;
-                break;
-            }
-            taskIndex++;
-        }
-    }
-
-    if (found) {
-        currentContent = lines.join('\n');
-        if (editor && editor.value !== currentContent) {
-            editor.value = currentContent;
-        }
-        updateStatusInfo();
-    }
+    const taskLines = md.parse(source, {}).filter(token => token.type === 'inline' && token.map &&
+        token.children?.[0]?.type === 'html_inline' && token.children[0].content.includes('class="task-list-item-checkbox"'))
+        .map(token => token.map![0]);
+    if (taskLines.length !== renderedCount || index < 0 || index >= taskLines.length) return false;
+    const lineIndex = taskLines[index];
+    const match = lines[lineIndex]?.match(/^([ \t>]*(?:[-*+]|\d+\.)[ \t]+\[)([ xX])(\](?:[ \t]+.*)?)$/);
+    if (!match) return false;
+    lines[lineIndex] = `${match[1]}${isChecked ? 'x' : ' '}${match[3]}`;
+    currentContent = editor && isEditMode && !isPreviewEditMode
+        ? reconcileEditorLineEndings(splitEditorSource, lines.join('\n'))
+        : lines.join('\n');
+    if (editor && isEditMode && !isPreviewEditMode) splitEditorSource = currentContent;
+    if (editor && editor.value !== currentContent) editor.value = currentContent;
+    updateStatusInfo();
+    return true;
 }
 
 function wirePreviewInteractions() {
@@ -4853,6 +5699,11 @@ function wirePreviewInteractions() {
         }
 
         if (isPreviewEditMode) {
+            if (previewSourceMapping) {
+                checkbox.checked = !checkbox.checked;
+                showToast('为保护原文，请在分屏源码中修改待办状态。', true);
+                return;
+            }
             if (checkbox.checked) {
                 checkbox.setAttribute('checked', '');
             } else {
@@ -4865,8 +5716,18 @@ function wirePreviewInteractions() {
 
         const allCheckboxes = Array.from(preview.querySelectorAll('input.task-list-item-checkbox'));
         const index = allCheckboxes.indexOf(checkbox);
-        if (index >= 0) {
-            toggleTaskListItemByIndex(index, checkbox.checked);
+        if (isEditMode && !pushPreviewEditsToEditor()) {
+            checkbox.checked = !checkbox.checked;
+            return;
+        }
+        if (!toggleTaskListItemByIndex(index, checkbox.checked, allCheckboxes.length)) {
+            checkbox.checked = !checkbox.checked;
+            showToast('无法可靠定位待办项，请在源码中修改。');
+        } else if (isEditMode && previewSourceMapping) {
+            // The checkbox changes source directly, so rebuild stale mapped offsets.
+            previewSourceMapping = null;
+            renderMarkdown(currentContent);
+            scheduleMarkdownAutoSave();
         }
     });
 
@@ -4919,6 +5780,15 @@ function wirePreviewInteractions() {
 
     preview.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
+        if (previewSourceMapping && target.closest('[data-preview-source-action="split"]')) {
+            e.preventDefault();
+            setEditMode(true);
+            return;
+        }
+        if (previewSourceMapping && target.closest(`[data-preview-source-key="${previewSourceMapping.key}"]`)) {
+            if (target.closest('a')) e.preventDefault();
+            return;
+        }
         const tableTool = target.closest('[data-table-action]') as HTMLElement | null;
         if (tableTool) {
             e.preventDefault();
@@ -4987,7 +5857,20 @@ function wirePreviewInteractions() {
 
             // Handle anchor links (same document)
             if (href.startsWith('#')) {
-                // Let the browser handle anchor navigation
+                e.preventDefault();
+                e.stopPropagation();
+                const headings = Array.from(preview.querySelectorAll<HTMLElement>('.md-heading[id]')).map(heading => {
+                    const copy = heading.cloneNode(true) as HTMLElement;
+                    copy.querySelectorAll('.heading-anchor').forEach(node => node.remove());
+                    return { id: heading.id, text: copy.textContent || '' };
+                });
+                const id = resolveHeadingId(href.slice(1), link.textContent || '', headings);
+                const heading = id ? document.getElementById(id) : null;
+                if (heading && preview.contains(heading)) {
+                    heading.scrollIntoView({ block: 'start', behavior: 'smooth' });
+                } else {
+                    showToast('未找到唯一的目录目标，请检查目录链接与标题。');
+                }
                 return;
             }
 
@@ -5020,7 +5903,50 @@ function wirePreviewInteractions() {
         updateLastTableCellContextFromSelection();
     });
 
+    preview.addEventListener('beforeinput', (event: InputEvent) => {
+        if (!previewSourceMapping) return;
+        const selector = `[data-preview-source-key="${previewSourceMapping.key}"]`;
+        const mappedParent = (node: Node | null): Element | null =>
+            (node?.nodeType === Node.ELEMENT_NODE ? node as Element : node?.parentElement)?.closest(selector) || null;
+        const selection = window.getSelection();
+        const anchor = mappedParent(selection?.anchorNode || null);
+        const focus = mappedParent(selection?.focusNode || null);
+        const targets = typeof event.getTargetRanges === 'function' ? event.getTargetRanges() : [];
+        const safeTargets = Array.from(targets).every(range => mappedParent(range.startContainer) === anchor && mappedParent(range.endContainer) === anchor);
+        if (!anchor || anchor !== focus || !safeTargets ||
+            /^(?:insertParagraph|insertLineBreak|insertFromDrop|deleteByDrag|format)/.test(event.inputType) ||
+            /[\r\n\t]/.test(event.data || '')) {
+            event.preventDefault();
+            showToast('为保护原文，请在分屏源码中修改格式、换行或其他内容。', true);
+        }
+    });
+
+    preview.addEventListener('paste', (event: ClipboardEvent) => {
+        if (previewSourceMapping && /[\r\n\t]/.test(event.clipboardData?.getData('text/plain') || '')) {
+            event.preventDefault();
+            showToast('多行或制表符内容请粘贴到分屏源码中。', true);
+        }
+    });
+
+    preview.addEventListener('compositionstart', () => {
+        if (previewSourceMapping) previewSourceMapping.composing = true;
+    });
+    preview.addEventListener('compositionend', () => {
+        if (!previewSourceMapping) return;
+        previewSourceMapping.composing = false;
+        const draft = validateMappedPreviewInput(preview);
+        if (draft !== null) {
+            if (!isPreviewEditMode && !pushPreviewEditsToEditor(draft)) return;
+            schedulePreviewHistoryCapture();
+            scheduleMarkdownAutoSave();
+        }
+    });
+
     preview.addEventListener('input', () => {
+        if (previewSourceMapping) {
+            const draft = validateMappedPreviewInput(preview);
+            if (draft === null || (!isPreviewEditMode && !pushPreviewEditsToEditor(draft))) return;
+        }
         schedulePreviewHistoryCapture();
         scheduleMarkdownAutoSave();
         // Split Edit: mirror rendered-side edits into the markdown textarea (no-op in Preview Edit mode)
