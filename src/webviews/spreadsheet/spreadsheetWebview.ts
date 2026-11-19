@@ -214,6 +214,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
 
     // Save state (CSV-parity)
     let isSaving = false;
+    let deferredSpreadsheetInit = false;
     let exitAfterSave = false;
     let autoSaveTimer: any = null;
     let manualSaveReminderUntil = 0;
@@ -5916,16 +5917,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                 scheduleAutoSave('text');
             } else {
                 if (currentSettings.autoSave) {
-                    editsList.forEach(e => removePendingOutsideControlEdit(e.row, e.col));
-                    vscode.postMessage({
-                        command: 'saveXlsxEdits',
-                        sheetIndex: currentWorksheet,
-                        edits: editsList,
-                        richEdits: [],
-                        styleEdits: [],
-                        operations: [],
-                        isAutosave: true
-                    });
+                    saveEdits(false, true);
                 } else {
                     showManualSaveReminderIfNeeded();
                 }
@@ -7965,6 +7957,26 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         const message = event.data;
         if (!message || typeof message !== 'object') return;
 
+        if (message.command === 'webviewError') {
+            if (isSaving) {
+                hideLoading();
+                isSaving = false;
+                setButtonsEnabled(true);
+            }
+            showToast(message.message || '请求被拒绝：输入超出安全限制', false, 2500);
+            return;
+        }
+
+        if (message.command === 'saveWarning') {
+            showToast(message.message || '文件已保存，但附加处理失败。', false, 5000);
+            return;
+        }
+
+        if (message.command === 'externalFileChanged') {
+            showToast('文件已被外部修改；请先处理冲突后再保存。', false, 5000);
+            return;
+        }
+
         if (message.command === 'initSettings') {
             consumeIncomingSettingsPayload(message);
             return;
@@ -7976,6 +7988,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         }
 
         if (message.command === 'saveResult') {
+            if (!inFlightSave || message.saveRequestId !== inFlightSave.id) return;
             hideLoading();
             setLoadingText('Rendering worksheet...');
             isSaving = false;
@@ -8054,6 +8067,10 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                     setEditMode(false, true);
                 }
 
+                if (!hasMorePending && deferredSpreadsheetInit) {
+                    vscode.postMessage({ command: 'requestFreshData' });
+                }
+
                 if (scrollTarget && (savedScrollTop > 0 || savedScrollLeft > 0)) {
                     scrollTarget.scrollTop = savedScrollTop;
                     scrollTarget.scrollLeft = savedScrollLeft;
@@ -8063,7 +8080,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
                 pendingSaveWhileSaving = false;
                 queuedSaveShouldExit = false;
                 const isAutosaveResult = !!message.isAutosave;
-                showToast(isAutosaveResult ? I18n.t('toast.autosaveFailed', 'Autosave failed') : I18n.t('toast.errorSaving', 'Error saving'), isAutosaveResult, 1000);
+                showToast(message.error || (isAutosaveResult ? I18n.t('toast.autosaveFailed', 'Autosave failed') : I18n.t('toast.errorSaving', 'Error saving')), false, 5000);
             }
             return;
         }
@@ -8119,6 +8136,11 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
 
         // Handle initVirtualTable for virtual scrolling
         if (message.command === 'initVirtualTable') {
+            if (isSaving || hasPendingXlsxEdits()) {
+                deferredSpreadsheetInit = true;
+                return;
+            }
+            deferredSpreadsheetInit = false;
             if (message.language !== undefined || message.vscodeLanguage !== undefined) {
                 I18n.init(message.language, message.vscodeLanguage);
             }

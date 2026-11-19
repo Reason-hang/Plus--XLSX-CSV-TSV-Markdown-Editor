@@ -34,6 +34,7 @@ export class FeedbackModal {
                 </div>
                 
                 <form id="feedbackForm">
+                    <p>Submitting this form sends your feedback and the system information shown below to the original author's Google Form. Do not include private file content.</p>
                     <div class="form-group">
                         <label>System Information</label>
                         <textarea id="feedbackSystemDetails" name="entry.1764429077" readonly rows="4"></textarea>
