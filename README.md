@@ -1,118 +1,40 @@
-# XLSX, CSV, TSV & Markdown Editor - VS Code Extension
+# XLSX、CSV、TSV 与 Markdown 编辑器
 
-This open-source extension lets you view and edit XLSX, CSV, TSV, and GitHub Flavored Markdown files directly in VS Code. XLSX, CSV, and TSV now share one unified spreadsheet editor, one webview, and one editing pipeline, so selection, virtualization, sorting, filtering, conversion, settings, and save behavior stay consistent across tabular formats.
+本项目是基于原作者扩展的个人维护版本，支持在兼容 VS Code 扩展的 IDE 中查看和编辑 XLSX、CSV、TSV 与 Markdown。个人版 `2.1.0` 从上游 `v2.0.9` 的固定提交 `f448b8d23f6a3f84743b70baaff287ba856b4370` 重建，沿用扩展 ID `muhammad-ahmad.xlsx-viewer`。
 
-## Overview
+分屏支持直接编辑 Markdown 预览；可安全往返的含代码块文档允许编辑正文，代码块本身请在源码侧编辑。复杂原文在分屏预览和所见即所得模式下均开放可可靠定位的文字，可跨段选择和复制；跨定位区域的修改、换行、格式、代码块及不能可靠定位的内容请在分屏源码侧处理。保存期间继续输入的内容会留在编辑器中，仍需继续保存或等待启用的自动保存。
 
-The extension turns VS Code into a practical spreadsheet and Markdown workspace. You can inspect large datasets, edit tabular files, format spreadsheet content, convert between CSV/TSV/XLSX, and author Markdown with a synchronized preview without leaving the editor.
+> 构建、安装包和真实 IDE 验收见 [2.1.0 版本记录](docs/07-版本与发布/版本记录表-v2.2-续记.md#210)。
 
-> **Notice:** This extension has evolved from separate XLSX, CSV, and TSV editors into a unified spreadsheet webview backed by a single custom editor provider.
+## 功能
 
----
+- **表格**：统一网格支持单元格编辑、选择、格式、查找、筛选、排序和虚拟滚动；可在 CSV、TSV、XLSX 之间转换。CSV／TSV 本身不保存字体和颜色，样式保存在当前 IDE 的扩展状态中，历史设计的清理周期为 48 小时。
+- **Markdown**：提供预览、分屏编辑、同步滚动、大纲、代码行号、公式与 Mermaid；上游提供的浮动按钮可返回顶部。
+- **自动保存**：Markdown 的 `xlsxViewer.md.autoSave` 默认关闭，可在插件设置中启用；延迟设为 0 时使用 IDE 的 `files.autoSaveDelay`。这是扩展自己的保存功能，不等于自动继承 IDE 的 `files.autoSave` 模式或已接入原生文本模型。
+- **个人工具栏设置**：从 Markdown 右侧齿轮进入“自定义工具栏”，可调整允许配置的项目顺序与显示状态；设置入口固定保留。
+- **个人外观和主题**：可设置标题、高亮、预览和编辑区的颜色、字号与行高，也可加载外置 Markdown 主题。选中文本后可用 macOS `⌘⌥⇧3` 或 Windows／Linux `Ctrl+Alt+Shift+3` 添加 `<mark>`。
+- **数据保护**：本地文件保存前检查外部修改并采用原子替换；对已知无法保真重写的复杂 XLSX、非 UTF-8 或无法保真重写的 CSV／TSV 拒绝覆盖。保护范围与已验证情况见下方文档。
 
-## Key Features
+## 使用
 
-### Full-Featured Spreadsheet Editor (XLSX, CSV, TSV)
+1. 在 IDE 中通过本插件打开 `.xlsx`、`.csv`、`.tsv` 或 `.md` 文件。
+2. 表格可进入编辑模式、使用工具栏处理单元格；历史按钮用于查看和恢复已有快照。
+3. Markdown 可选择“分屏编辑”或“所见即所得”，编辑时可用工具栏直接切换；如按钮被自定义隐藏，可在齿轮中的“自定义工具栏”恢复。复杂文档会显示编辑范围提示；如草稿仍无法安全转换，可复制恢复面板中的 HTML 备份，再按提示返回预览或放弃预览改动并打开分屏。HTML 备份不能直接覆盖 Markdown 原文。
+4. 在 Markdown 右上角齿轮中可调整自动保存、外观和工具栏布局。上游返回顶部按钮在文档向下滚动后显示。
+5. 工作区外的本地图片需将可信目录加入 `xlsxViewer.md.externalResourceRoots`；远程 HTTPS 图片默认关闭，可通过 `xlsxViewer.md.allowRemoteImages` 显式允许。
 
-- **Unified spreadsheet webview:** XLSX, CSV, and TSV are handled by one shared grid implementation.
-- **Google Sheets-style editing:** Rich text formatting, text/background colors, strikethrough, alignment, borders, font size, font family, wrapping, clear formatting, and format painter in styled mode.
-- **CSV/TSV styled mode:** CSV and TSV can use temporary local style persistence for formatting that delimited files cannot store directly.
-- **Advanced cell controls:** Checkboxes, dropdowns, ratings, dates, and images are supported in the spreadsheet grid where the underlying format supports them.
-- **Find, sort, and filter:** Built-in find plus column header sorting and filters for contains, equals, starts-with, non-empty, and case-sensitive matching.
-- **Cross-format conversion:** Convert files between CSV, TSV, and XLSX from the editor toolbar.
-- **Version history and rollback:** Recent states are archived so you can preview and restore prior file versions.
-- **Autosave and persistence:** Configurable autosave for text, controls, formatting, and structure changes.
-- **Large file virtualization:** Windowed rendering keeps CSV, TSV, and XLSX responsive on large datasets.
-- **Excel-like selection and navigation:** Multi-cell selection, row/column selection, resizing, auto-fit, and keyboard navigation.
-- **Plain view mode:** Hide styling for a simpler data-first view.
+## 配置、安装与维护
 
-### Advanced Markdown Viewer & Editor
+- [个人功能、主题和开发验证说明](README-LOCAL-PATCH.md)
+- [Markdown 工具栏说明](docs/04-开发文档/Markdown工具栏布局与返回顶部.md)
+- [安装与回退说明](docs/06-运维与部署/安装与回退说明.md)
+- [上游升级与自研差异持续维护方案](docs/06-运维与部署/上游升级与自研差异持续维护方案.md)
+- [自研差异台账](docs/07-版本与发布/自研差异台账.md)
 
-- **Split view with sync scroll:** Edit Markdown on one side and preview it on the other.
-- **Preview edit mode:** Edit Markdown directly from the rendered preview with a rich formatting toolbar.
-- **GitHub-Flavored Markdown:** Tables, task lists, code blocks, and footnotes are supported.
-- **Interactive outline panel:** Navigate long documents with an auto-scrolling table of contents.
-- **Local asset support:** Render relative links and local images.
-- **Code block enhancements:** Copy buttons and line numbers are built into fenced code blocks.
+本地安装包与应用商店中的原作者版本使用同一扩展 ID；在同一 IDE 中安装会替换该 ID 对应版本。安装 VSIX 和运行中窗口实际加载新版本是两个不同步骤；本项目不会自动升级、重启或重载你的 IDE。
 
-### Native VS Code Experience
+## 来源与许可证
 
-- **Theme integration:** The UI follows the active VS Code light, dark, or high-contrast theme.
-- **Configurable layout:** Toggle headers, sticky toolbars, sticky headers, spacious cells, and hyperlink previews.
-- **In-editor feedback:** Use Help & Feedback from the toolbar to report issues or suggestions.
+上游项目：[Mahmadabid/XLSX-CSV-TSV-MARKDOWN-Editor-Vscode-Extension](https://github.com/Mahmadabid/XLSX-CSV-TSV-MARKDOWN-Editor-Vscode-Extension)。
 
----
-
-## Usage Guide
-
-### Working with Spreadsheets
-
-1. Open any `.xlsx`, `.csv`, or `.tsv` file from the VS Code explorer.
-2. Click a cell to select or edit it. CSV/TSV plain mode supports direct table editing.
-3. Toggle styled mode when you need formatting for CSV/TSV, or work directly in styled mode for XLSX.
-4. Select cells and use the toolbar to apply colors, borders, alignment, wrapping, fonts, or clear formatting.
-5. Right-click a column header to sort or filter. Multiple column filters are combined.
-6. Click **Convert** to convert between CSV, TSV, and XLSX.
-7. Click the history icon to preview or restore previous file versions.
-
-### Unified Spreadsheet Architecture
-
-The tabular editor is now merged into a single implementation:
-
-- `SpreadsheetEditorProvider` handles XLSX/CSV/TSV file IO, virtual row requests, saves, style persistence, conversion, settings, and version history.
-- `spreadsheetWebview.ts` handles the shared grid UI, selection, edit modes, toolbar actions, sorting, filtering, and virtualization.
-- CSV/TSV plain mode writes directly to the delimited file.
-- CSV/TSV styled mode stores formatting in local extension state and can carry that formatting into XLSX conversion.
-
-### Working with Markdown
-
-1. Open a `.md` file and use **Open in Preview** from the editor title bar or command palette.
-2. Edit Markdown in split view with synchronized scrolling.
-3. Use **Edit Preview** to modify the document from the rendered view.
-
----
-
-## Settings & Configuration
-
-Key settings include:
-
-- **Autosave (`xlsxViewer.*.autoSave`):** Enable or disable automatic saving for supported file types.
-- **Sticky elements (`xlsxViewer.*.stickyToolbar`, `xlsxViewer.*.stickyHeader`):** Keep toolbars and headers visible while scrolling.
-- **Spacious cells (`xlsxViewer.*.spaciousCells`):** Increase cell padding for a more readable grid.
-- **Spreadsheet controls (`xlsxViewer.xlsx.allowInteractiveControlsOutsideEditMode`):** Allow interactive controls outside table edit mode.
-- **Markdown layout (`xlsxViewer.md.previewPosition`, `xlsxViewer.md.syncScroll`):** Control preview placement and synchronized scrolling.
-
-Open VS Code Settings and search for `xlsxViewer` to see all options.
-
----
-
-## Installation
-
-1. Open VS Code.
-2. Go to the Extensions Marketplace with `Ctrl+Shift+X`.
-3. Search for `XLSX, CSV, TSV & Markdown Editor`.
-4. Click **Install**.
-
-You can also install it from the command line:
-
-```bash
-code --install-extension muhammad-ahmad.xlsx-viewer
-```
-
----
-
-## Feedback & Support
-
-- **In-app feedback:** Use the Help & Feedback button in the extension toolbar.
-- **Marketplace review:** Rate the extension on the VS Code Marketplace if it is useful for your workflow.
-- **GitHub:** Submit issues, feature requests, or pull requests at [Mahmadabid/XLSX-CSV-TSV-MARKDOWN-Editor-Vscode-Extension](https://github.com/Mahmadabid/XLSX-CSV-TSV-MARKDOWN-Editor-Vscode-Extension).
-
-## License
-
-This project is licensed under the MIT License.
-
-## Links
-
-- GitHub: [Mahmadabid/XLSX-CSV-TSV-MARKDOWN-Editor-Vscode-Extension](https://github.com/Mahmadabid/XLSX-CSV-TSV-MARKDOWN-Editor-Vscode-Extension)
-- VS Code Marketplace: [Download Extension](https://marketplace.visualstudio.com/items?itemName=muhammad-ahmad.xlsx-viewer)
-- Open VSX: [Open VSX Link](https://open-vsx.org/extension/muhammad-ahmad/xlsx-viewer)
+本项目遵循 [MIT 许可证](LICENSE)。上游提供的表格与 Markdown 基础能力和个人维护的改动分别在版本记录中标注；历史版本记录保留当时的证据范围。

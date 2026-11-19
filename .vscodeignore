@@ -3,6 +3,7 @@
 .vscode-test/**
 .github/**
 release/**
+docs/**
 scripts/**
 out/**
 node_modules/**

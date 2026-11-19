@@ -1,5 +1,45 @@
 # Changelog
 
+## v2.1.0
+
+- 从原作者 `v2.0.9` 固定提交重建。使用上游的返回顶部、自动保存、分屏双向编辑和表格保存批次。
+- 迁入个人工具栏排序和显隐、旧布局回读、外观、外置主题、历史兼容及文件保真保护。
+- 分屏用同一次渲染建立可编辑区域和保真基线，避免首帧编辑时序差异。分屏与所见即所得切换保留草稿。
+- 增加功能补丁预检与候选重放入口。回放用例覆盖已确认退役、冲突暂停、人工修复后续跑和重复执行。
+
+## v2.0.9-local.6（候选）
+
+- 编辑时保留“分屏编辑”和“所见即所得”入口，支持保留草稿直接切换。
+- 切换后仍以最近一次保存为取消基线；无法安全转换时保留预览草稿。
+- 已覆盖隔离 DOM 和宿主模拟；真实 IDE 交互仍需单独验收。
+
+## v2.0.9-local.5（候选）
+
+- 修复点击 Markdown 待办框时可能误修改代码块中相似文本的问题。
+- 根据 Markdown 解析结果定位待办项，无法可靠定位时保留原文并提示。
+
+## v2.0.9-local.4（候选）
+
+- 保留本地图片的原始 Markdown 路径，使安全往返的含图文档可以在分屏预览编辑正文。
+- 增加图片解析前后、缓存渲染及正文修改的 Webview DOM 回归检查。
+
+## v2.0.9-local.3（候选）
+
+- 允许往返一致的含围栏代码块文档在分屏预览侧编辑正文，保留原始代码块文本；代码块本身在源码侧编辑。
+- 增加实际 Webview DOM 测试，覆盖不同围栏、代码内制表符、保存请求与普通正文制表符保护。
+
+## v2.0.9-local.2（候选）
+
+- 修复进入 Markdown 分屏时预览侧未初始化，普通文档无法直接编辑的问题。
+- 增加运行实际 Webview 构建产物的 DOM 回归检查，覆盖分屏双向同步和围栏代码保护。
+
+## v2.0.9-local.1（候选）
+
+- 合入上游 v2.0.8 的表格保存批次和 v2.0.9 的 Markdown 分屏预览编辑。
+- 保留个人工具栏布局与安全保存；对于不能安全转换的 Markdown，预览侧退回源码编辑。
+- 表格粘贴走统一保存队列，并在存在待保存修改时延迟整表刷新。
+- 自动化与真实 IDE 验收分别记录；候选版本不代表已完成真实宿主验收。
+
 ## v2.0.9 - WYSIWYG Split Editing
 - You can now edit the formatted Markdown preview directly while using split view.
 - Changes made on either side stay in sync.
@@ -7,6 +47,13 @@
 ## v2.0.8 - Spreadsheet Editing & Save Reliability
 - Improved spreadsheet cell editing for long text by preserving line breaks and allowing content to remain fully visible while editing.
 - Improved save reliability by tracking save requests and matching responses to the originating edit, including autosave operations.
+
+## v2.0.7-local.1（候选）
+
+- 以上游 `v2.0.7` 为基线，迁入个人工具栏布局、Markdown 外观与主题、安全保存和历史能力；自研与上游归属见自研差异台账。
+- 使用上游的浮动返回顶部与插件自动保存，不再迁入旧版自研返回顶部按钮。
+- 调整工具栏两层对齐，工具栏布局写入扩展状态并兼容读取旧设置，避免依赖旧布局配置键的注册状态。
+- 已完成本地构建、隔离自动化与部分浏览器检查；真实 IDE 保存、恢复与安装状态以实际验收记录为准。
 
 ## v2.0.7 – Automatic Saving & Settings UI Rework
 - Added optional **Auto Save** for each supported file type (disabled by default).
