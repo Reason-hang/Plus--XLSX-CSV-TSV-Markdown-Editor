@@ -9,6 +9,20 @@ function escapeHtml(input: string): string {
         .replace(/'/g, '&#39;');
 }
 
+export function resolveExcelCellValue(value: Excel.CellValue): Excel.CellValue {
+    const resolved = value && typeof value === 'object' && ('formula' in value || 'sharedFormula' in value)
+        ? value.result
+        : value;
+    if (resolved && typeof resolved === 'object' && 'error' in resolved) {
+        return resolved.error;
+    }
+    return resolved;
+}
+
+function formatDisplayDate(date: Date): string {
+    return date.toLocaleDateString(undefined, { timeZone: 'UTC' });
+}
+
 /**
  * Convert an ExcelJS cell to the display representation used by the
  * spreadsheet Webview. Rich-text markup is generated only from validated
@@ -39,7 +53,11 @@ export function getCellValueForDisplay(cell: Excel.Cell): string {
     }
 
     if (cell.type === Excel.ValueType.Formula) {
-        return cell.result === null || cell.result === undefined ? '' : String(cell.result);
+        const result = resolveExcelCellValue(cell.value);
+        if (result === null || result === undefined) {
+            return '';
+        }
+        return result instanceof Date ? formatDisplayDate(result) : String(result);
     }
 
     if (cell.type === Excel.ValueType.RichText) {
@@ -73,12 +91,12 @@ export function getCellValueForDisplay(cell: Excel.Cell): string {
     }
 
     if (cell.type === Excel.ValueType.Date || cell.value instanceof Date) {
-        return (cell.value as Date).toLocaleDateString(undefined, { timeZone: 'UTC' });
+        return formatDisplayDate(cell.value as Date);
     }
 
     if (typeof cell.value === 'boolean') {
         return cell.value ? 'TRUE' : 'FALSE';
     }
 
-    return String(cell.value);
+    return String(resolveExcelCellValue(cell.value));
 }

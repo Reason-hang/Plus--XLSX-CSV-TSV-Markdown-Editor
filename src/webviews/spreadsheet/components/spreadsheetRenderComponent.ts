@@ -226,7 +226,8 @@ export function renderCellContent(cellData: any, isPlainView: boolean, allowInte
     const cellDisplayValue = toCellDisplayValue(cellData);
 
     if (isPlainView) {
-        return '<span class="cell-content">' + toPlainCellContent(cellDisplayValue) + '</span>';
+        const plainText = cellData?.isRichText === true ? richCellText(cellDisplayValue) : cellDisplayValue;
+        return '<span class="cell-content">' + (plainText ? escapeHtml(plainText) : '&nbsp;') + '</span>';
     }
 
     if (cellType === 'checkbox') {
@@ -296,15 +297,10 @@ export function renderCellContent(cellData: any, isPlainView: boolean, allowInte
     return '<span class="cell-content">' + text + '</span>';
 }
 
-function toPlainCellContent(value: unknown): string {
-    const raw = value === null || value === undefined ? '' : String(value);
-    if (!raw) return '&nbsp;';
-
-    const tmp = document.createElement('div');
-    tmp.innerHTML = raw;
-    const plain = (tmp.textContent || tmp.innerText || '').replace(/\u00a0/g, ' ').trim();
-
-    return plain ? escapeHtml(plain) : '&nbsp;';
+export function richCellText(value: string): string {
+    const template = document.createElement('template');
+    template.innerHTML = sanitizeRichTextHtml(value);
+    return template.content.textContent ?? '';
 }
 
 export interface XlsxRowHtmlParams {

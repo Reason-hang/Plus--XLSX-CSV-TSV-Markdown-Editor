@@ -4,6 +4,25 @@ import * as Excel from 'exceljs';
 import { getCellValueForDisplay } from '../spreadsheet/cellValue';
 
 suite('表格渲染安全', () => {
+    test('纯文本视图保留尖括号、实体字面量和 emoji', () => {
+        const html = renderCellContent({ value: '姓名 <联系人> x &amp; y 🍎' }, true, false, false);
+        assert.strictEqual(html, '<span class="cell-content">姓名 &lt;联系人&gt; x &amp;amp; y 🍎</span>');
+    });
+
+    test('错误值和公式结果使用单元格显示语义', () => {
+        const sheet = new Excel.Workbook().addWorksheet('test');
+        const date = new Date('2024-01-02T00:00:00Z');
+        sheet.getCell('A1').value = { error: '#N/A' };
+        sheet.getCell('A2').value = { formula: '1/0', result: { error: '#DIV/0!' } };
+        sheet.getCell('A3').value = { formula: 'A1' };
+        sheet.getCell('A4').value = { formula: 'DATE(2024,1,2)', result: date };
+        sheet.getCell('A5').value = date;
+        assert.strictEqual(getCellValueForDisplay(sheet.getCell('A1')), '#N/A');
+        assert.strictEqual(getCellValueForDisplay(sheet.getCell('A2')), '#DIV/0!');
+        assert.strictEqual(getCellValueForDisplay(sheet.getCell('A3')), '');
+        assert.strictEqual(getCellValueForDisplay(sheet.getCell('A4')), getCellValueForDisplay(sheet.getCell('A5')));
+    });
+
     test('普通文本中的标签按文本显示', () => {
         const html = renderCellContent({ value: '<img src=x onerror=alert(1)>', cellType: 'text' }, false, false, false);
         assert.match(html, /&lt;img/);

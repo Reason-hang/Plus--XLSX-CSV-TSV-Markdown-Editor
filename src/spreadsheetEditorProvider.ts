@@ -4,17 +4,85 @@ import * as Excel from 'exceljs';
 import * as fs from 'fs';
 import * as path from 'path';
 import { createHash } from 'crypto';
-import { VERSION_HISTORY_RETENTION_MS, buildGroupedVersionHistoryItems as buildSharedVersionHistoryItems, formatVersionHistoryTimestamp, getVersionHistoryDir, isSafeSnapshotFile } from './shared/versionHistory';
+import { VERSION_HISTORY_MAX_ENTRIES, VERSION_HISTORY_MAX_TOTAL_BYTES, VERSION_HISTORY_RETENTION_MS, buildGroupedVersionHistoryItems as buildSharedVersionHistoryItems, formatVersionHistoryTimestamp, getVersionHistoryDir, isSafeSnapshotFile } from './shared/versionHistory';
 import { writeBufferFileAtomically, writeFileAtomically } from './shared/atomicFile';
 import { hashBuffer, hashFile } from './shared/fileFingerprint';
-import { assertXlsxRoundTripSupported } from './shared/xlsxRoundTripSafety';
+import { assertXlsxPartsPreserved, assertXlsxRoundTripSupported } from './shared/xlsxRoundTripSafety';
 import { isAllowedExternalUri } from './shared/externalUri';
 import { buildInlineListFormula } from './shared/inlineListFormula';
 import { convertARGBToRGBA, isShadeOfBlack, isShadeOfWhite, loadExcelWorkbook } from './spreadsheet/spreadsheetUtilities';
-import { convertTabularFile, readTabularFile, detectTabularFileType, writeTabularFile, TabularFileType } from './shared/fileConversionService';
+import { convertTabularFile, readTabularFile, detectTabularFileType, writeTabularFile, readDelimitedFileBytes, DelimitedFileLimitError, TabularFileType } from './shared/fileConversionService';
 import { StyleStorageService } from './shared/styleStorageService';
 import { getCellValueForDisplay } from './spreadsheet/cellValue';
 import { validateWebviewMessage } from './shared/webviewMessageSchema';
+
+function parseExistingNumericCellText(cell: Excel.Cell, value: string): number | undefined {
+    if (cell.type !== Excel.ValueType.Number || !/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) {
+        return undefined;
+    }
+    const significant = value.replace(/[-.]/g, '').replace(/^0+/, '');
+    if (significant.length > 15) {
+        return undefined;
+    }
+    const number = Number(value);
+    return Number.isFinite(number) && (number !== 0 || !significant) ? number : undefined;
+}
+
+function isFormulaCell(cell: Excel.Cell): boolean {
+    return (cell.isMerged ? cell.master : cell).type === Excel.ValueType.Formula;
+}
+
+function assertFormulaEditSupported(cell: Excel.Cell, value: string): void {
+    if (isFormulaCell(cell) || value.trimStart().startsWith('=')) {
+        throw new Error(`单元格 ${cell.address} 涉及公式，请在 Excel 中编辑公式。此次未保存。`);
+    }
+}
+
+function workbookHasFormulas(workbook: Excel.Workbook): boolean {
+    return workbook.worksheets.some(sheet => {
+        let found = false;
+        sheet.eachRow(row => {
+            if (!found) {
+                row.eachCell(cell => { found ||= cell.type === Excel.ValueType.Formula; });
+            }
+        });
+        return found;
+    });
+}
+
+function mergeSignature(sheet: Excel.Worksheet): string {
+    return sheet.hasMerges ? [...sheet.model.merges].sort().join('\n') : '';
+}
+
+function movesXlsxCoordinates(type: string): boolean {
+    return type !== 'insertControl' && type !== 'mergeRange' && type !== 'unmergeRange';
+}
+
+const DELIMITED_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
+const DELIMITED_PREVIEW_MAX_ROWS = 200_000;
+const DELIMITED_PREVIEW_MAX_CELLS = 200_000;
+const XLSX_HISTORY_MAX_BYTES = 200 * 1024 * 1024;
+
+async function assertDelimitedPreviewSize(filePath: string): Promise<void> {
+    if ((await fs.promises.stat(filePath)).size > DELIMITED_PREVIEW_MAX_BYTES) {
+        throw new DelimitedFileLimitError('CSV/TSV 超过表格视图的 10 MiB 文件上限。');
+    }
+}
+
+function assertDelimitedPreviewGrid(rows: number, columns: number): void {
+    if (rows > DELIMITED_PREVIEW_MAX_ROWS || Math.max(rows, 20) * Math.max(columns, 10) > DELIMITED_PREVIEW_MAX_CELLS) {
+        throw new DelimitedFileLimitError('CSV/TSV 超过表格视图的 20 万条记录或 20 万个视图单元格上限（含补齐的空格）。');
+    }
+}
+
+const delimitedPreviewLimits = {
+    maxBytes: DELIMITED_PREVIEW_MAX_BYTES,
+    assertDimensions: assertDelimitedPreviewGrid
+};
+
+function widestDelimitedRow(rows: string[][]): number {
+    return rows.reduce((width, row) => Math.max(width, row.length), 0);
+}
 
 function borderEditToCssValue(enabled: boolean, style?: string, color?: string): string {
     if (!enabled) return '';
@@ -215,6 +283,7 @@ function normalizeStoredStyle(stored: any): any {
 
 export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorProvider {
     private readonly styleStorage: StyleStorageService;
+    private readonly historyOperations = new Map<string, Promise<unknown>>();
     constructor(private readonly context: vscode.ExtensionContext) {
         this.styleStorage = new StyleStorageService(context);
     }
@@ -233,6 +302,25 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
         token: vscode.CancellationToken
     ): Promise<void> {
         const webview = webviewPanel.webview;
+        const filePath = document.uri.fsPath;
+        let currentFileType: TabularFileType = detectTabularFileType(filePath) || 'xlsx';
+        const isDelimitedDocument = currentFileType === 'csv' || currentFileType === 'tsv';
+        const fallbackToTextEditor = async (error: DelimitedFileLimitError) => {
+            void vscode.window.showWarningMessage(`${error.message} 已转到默认文本编辑器。`);
+            await vscode.commands.executeCommand('vscode.openWith', document.uri, 'default');
+        };
+        if (isDelimitedDocument) {
+            try {
+                await assertDelimitedPreviewSize(filePath);
+            } catch (error) {
+                if (error instanceof DelimitedFileLimitError) {
+                    await fallbackToTextEditor(error);
+                } else {
+                    void vscode.window.showErrorMessage(`Error reading CSV/TSV: ${error}`);
+                }
+                return;
+            }
+        }
 
         webview.options = {
             enableScripts: true,
@@ -246,11 +334,10 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
         webview.html = getWebviewContent(webviewPanel, this.context);
 
         let isWebviewReady = false;
+        let hasLoadedWorkbook = false;
         // Store parsed worksheet data for virtualization
         let worksheetsData: any[] = [];
         let rowHeaderWidth = 40;
-        const filePath = document.uri.fsPath;
-        let currentFileType: TabularFileType = detectTabularFileType(filePath) || 'xlsx';
         let hasActiveTemporaryStyles = false;
         let shouldOpenDelimitedInStyledMode = false;
         let currentIsPlainView = false;
@@ -259,8 +346,11 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
         let lastSaveTime = 0;
         let lastKnownFileHash = '';
 
+        const readCurrentFileHash = () => isDelimitedDocument
+            ? readDelimitedFileBytes(filePath, DELIMITED_PREVIEW_MAX_BYTES).then(hashBuffer)
+            : hashFile(filePath);
         const assertFileUnchanged = async () => {
-            if (document.uri.scheme === 'file' && lastKnownFileHash && await hashFile(filePath) !== lastKnownFileHash) {
+            if (document.uri.scheme === 'file' && lastKnownFileHash && await readCurrentFileHash() !== lastKnownFileHash) {
                 throw new Error('文件已被外部修改，请先处理冲突后再保存。');
             }
         };
@@ -792,6 +882,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 }
                 case 'insertCellShiftDown': {
                     if (row > 0 && col > 0 && row <= rows.length) {
+                        assertDelimitedPreviewGrid(rows.length + 1, col);
                         rows.push([]);
                         for (let r = rows.length - 2; r >= row - 1; r--) {
                             const sourceRow = rows[r];
@@ -817,24 +908,29 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     break;
                 }
                 case 'deleteCellShiftLeft': {
-                    if (row > 0 && col > 0 && row <= rows.length) {
-                        const rowData = rows[row - 1];
-                        if (col - 1 < rowData.length) {
-                            rowData.splice(col - 1, 1);
-                        }
+                    const rowData = rows[row - 1];
+                    if (!rowData || col < 1 || col > rowData.length) {
+                        throw new Error('单元格移位超出已有表格范围，未保存。');
                     }
+                    rowData.splice(col - 1, 1);
                     break;
                 }
                 case 'deleteCellShiftUp': {
-                    if (row > 0 && col > 0) {
-                        for (let r = row - 1; r < rows.length - 1; r++) {
-                            const nextValue = rows[r + 1][col - 1] ?? '';
-                            rows[r][col - 1] = nextValue;
+                    if (row < 1 || row > rows.length || col < 1 || !rows.some(rowData => col <= rowData.length)) {
+                        throw new Error('单元格移位超出已有表格范围，未保存。');
+                    }
+                    for (let r = row - 1; r < rows.length - 1; r++) {
+                        const nextValue = rows[r + 1][col - 1];
+                        if (nextValue !== undefined || col <= rows[r].length) {
+                            while (rows[r].length < col) {
+                                rows[r].push('');
+                            }
+                            rows[r][col - 1] = nextValue ?? '';
                         }
-                        const lastRow = rows[rows.length - 1];
-                        if (lastRow && col - 1 < lastRow.length) {
-                            lastRow.splice(col - 1, 1);
-                        }
+                    }
+                    const lastRow = rows[rows.length - 1];
+                    if (col <= lastRow.length) {
+                        lastRow[col - 1] = '';
                     }
                     break;
                 }
@@ -842,11 +938,14 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
         };
 
         const applyDelimitedEditValues = (rows: string[][], edits: any[]) => {
+            let width = widestDelimitedRow(rows);
             for (const edit of edits) {
                 const row = typeof edit?.row === 'number' ? edit.row : 0;
                 const col = typeof edit?.col === 'number' ? edit.col : 0;
                 if (!row || !col) continue;
 
+                width = Math.max(width, col);
+                assertDelimitedPreviewGrid(Math.max(rows.length, row), width);
                 while (rows.length < row) {
                     rows.push([]);
                 }
@@ -861,11 +960,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
         const saveDelimitedFileAndStyles = async (sourceType: TabularFileType, edits: any[], richEdits: any[], styleEdits: any[], operations: any[], isAutosave: boolean, saveRequestId?: any) => {
             const requiresWorkbookRefresh = edits.length > 0 || operations.length > 0 || styleEdits.length > 0 || richEdits.length > 0;
             await assertFileUnchanged();
-            const { workbook: tabularData } = await readTabularFile(document.uri.fsPath, sourceType);
+            const { workbook: tabularData } = await readTabularFile(document.uri.fsPath, sourceType, delimitedPreviewLimits);
             const rows = tabularData.sheets[0]?.rows ? tabularData.sheets[0].rows.map(row => [...row]) : [];
 
             for (const op of operations) {
                 applyDelimitedOperationsToRows(rows, op);
+                assertDelimitedPreviewGrid(rows.length, widestDelimitedRow(rows));
             }
 
             applyDelimitedEditValues(rows, edits);
@@ -1021,8 +1121,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
             this.styleStorage.assertMetadataWithinLimits({ cells: finalCells, merges });
             await assertFileUnchanged();
-            await writeTabularFile(document.uri.fsPath, { sheets: [{ name: 'Sheet1', rows }] }, sourceType);
-            lastKnownFileHash = await hashFile(filePath);
+            await writeTabularFile(document.uri.fsPath, { sheets: [{ name: 'Sheet1', rows }] }, sourceType, delimitedPreviewLimits);
+            lastKnownFileHash = await readCurrentFileHash();
             lastSaveTime = Date.now();
             const saveWarnings: string[] = [];
             try {
@@ -1148,8 +1248,15 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     continue;
                 }
 
-                await fs.promises.access(snapshotPath, fs.constants.F_OK);
-                kept.push(entry);
+                try {
+                    const stat = await fs.promises.stat(snapshotPath);
+                    kept.push({ ...entry, byteSize: stat.size });
+                } catch (error) {
+                    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+                        continue;
+                    }
+                    throw error;
+                }
             }
 
             if (kept.length !== source.length) {
@@ -1162,14 +1269,38 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             return kept;
         };
 
-        const persistVersionSnapshot = async () => {
+        const withHistoryLock = async <T>(action: () => Promise<T>): Promise<T> => {
+            const indexPath = getHistoryIndexPath();
+            const previous = this.historyOperations.get(indexPath);
+            const operation = previous ? previous.catch(() => undefined).then(action) : action();
+            this.historyOperations.set(indexPath, operation);
+            try {
+                return await operation;
+            } finally {
+                if (this.historyOperations.get(indexPath) === operation) {
+                    this.historyOperations.delete(indexPath);
+                }
+            }
+        };
+
+        const persistVersionSnapshot = () => withHistoryLock(async () => {
             try {
                 const history = await pruneHistory();
-                const snapshotBytes = await fs.promises.readFile(filePath);
+                const byteLimit = currentFileType === 'xlsx' ? XLSX_HISTORY_MAX_BYTES : VERSION_HISTORY_MAX_TOTAL_BYTES;
+                const capacityMessage = '版本历史已达到保留上限；现有未过期版本已保留，本次未新增快照。';
+                if ((await fs.promises.stat(filePath)).size > byteLimit) {
+                    throw new Error(capacityMessage);
+                }
+                const snapshotBytes = isDelimitedDocument
+                    ? await readDelimitedFileBytes(filePath, byteLimit)
+                    : await fs.promises.readFile(filePath);
                 const snapshotHash = createHash('sha1').update(snapshotBytes).digest('hex');
                 const last = history.length ? history[history.length - 1] : null;
                 if (last?.hash === snapshotHash) {
                     return;
+                }
+                if (history.length >= VERSION_HISTORY_MAX_ENTRIES || history.reduce((total, entry) => total + entry.byteSize, 0) + snapshotBytes.length > byteLimit) {
+                    throw new Error(capacityMessage);
                 }
 
                 const now = Date.now();
@@ -1177,7 +1308,8 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 const snapshotFile = `${id}.${currentFileType}`;
 
                 await ensureHistoryDir();
-                await writeBufferFileAtomically(getSnapshotPath(snapshotFile), snapshotBytes);
+                const snapshotPath = getSnapshotPath(snapshotFile);
+                await writeBufferFileAtomically(snapshotPath, snapshotBytes);
 
                 history.push({
                     id,
@@ -1189,12 +1321,17 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     snapshotFile
                 });
 
-                await saveHistory(history);
+                try {
+                    await saveHistory(history);
+                } catch (error) {
+                    await fs.promises.unlink(snapshotPath).catch(() => undefined);
+                    throw error;
+                }
             } catch (error) {
                 console.error('Failed to save spreadsheet version history:', error);
                 throw error;
             }
-        };
+        });
 
         type SettingsScope = 'plain' | 'styled';
         type PersistedSpreadsheetSettings = {
@@ -1418,22 +1555,36 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 await loadExcelWorkbook(sourcePath, workbook);
             } else {
                 // Load CSV/TSV data
-                const { workbook: tabularData } = await readTabularFile(sourcePath, fileType);
-                const ws = workbook.addWorksheet('Data');
-                if (tabularData.sheets.length > 0) {
-                    const rows = tabularData.sheets[0].rows;
-                    for (let r = 0; r < rows.length; r++) {
-                        const rowData = rows[r];
-                        for (let c = 0; c < rowData.length; c++) {
-                            ws.getCell(r + 1, c + 1).value = rowData[c];
+                const { workbook: tabularData } = await readTabularFile(sourcePath, fileType, delimitedPreviewLimits);
+                const rows = tabularData.sheets[0]?.rows ?? [];
+                let maxRow = rows.length;
+                let maxColumn = widestDelimitedRow(rows);
+                const metadata = await this.styleStorage.getMetadata(document.uri);
+                for (const merge of metadata?.merges ?? []) {
+                    maxRow = Math.max(maxRow, merge.endRow);
+                    maxColumn = Math.max(maxColumn, merge.endCol);
+                }
+                for (const [key, cellMeta] of Object.entries(metadata?.cells ?? {})) {
+                    if (cellMeta?.control) {
+                        const address = parseStyleKey(key);
+                        if (address) {
+                            maxRow = Math.max(maxRow, address.row);
+                            maxColumn = Math.max(maxColumn, address.col);
                         }
+                    }
+                }
+                assertDelimitedPreviewGrid(maxRow, maxColumn);
+                const ws = workbook.addWorksheet('Data');
+                for (let r = 0; r < rows.length; r++) {
+                    const rowData = rows[r];
+                    for (let c = 0; c < rowData.length; c++) {
+                        ws.getCell(r + 1, c + 1).value = rowData[c];
                     }
                 }
 
                 const preferredViewMode = this.styleStorage.getPreferredViewMode(document.uri);
                 shouldOpenDelimitedInStyledMode = preferredViewMode === 'styled';
 
-                const metadata = await this.styleStorage.getMetadata(document.uri);
                 if (metadata) {
                     if (metadata.merges && metadata.merges.length > 0) {
                         for (const merge of metadata.merges) {
@@ -1543,8 +1694,21 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             // Start compact and let the webview grow row header width only when needed for visible rows.
             rowHeaderWidth = 40;
             if (document.uri.scheme === 'file' && path.resolve(sourcePath) === path.resolve(filePath)) {
-                lastKnownFileHash = await hashFile(filePath);
+                lastKnownFileHash = await readCurrentFileHash();
             }
+        };
+
+        const initializeReadyWebview = async () => {
+            try {
+                await persistVersionSnapshot();
+            } catch (error) {
+                webview.postMessage({ command: 'versionHistoryError', message: `版本历史初始化失败：${String(error)}` });
+            }
+            trySendSettings();
+            trySendInit();
+            try {
+                webview.postMessage({ type: 'setTheme', kind: vscode.window.activeColorTheme.kind });
+            } catch { }
         };
 
         // Listen for messages
@@ -1556,23 +1720,18 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
             }
             if (message?.command === 'webviewReady') {
                 isWebviewReady = true;
-                try {
-                    await persistVersionSnapshot();
-                } catch (error) {
-                    webview.postMessage({ command: 'versionHistoryError', message: `版本历史初始化失败：${String(error)}` });
+                if (hasLoadedWorkbook) {
+                    await initializeReadyWebview();
                 }
-                trySendSettings();
-                trySendInit();
-                // Send current theme info to webview
-                try {
-                    webview.postMessage({ type: 'setTheme', kind: vscode.window.activeColorTheme.kind });
-                } catch { }
+                return;
+            }
+            if (!hasLoadedWorkbook) {
                 return;
             }
 
             if (message?.command === 'showVersionHistory') {
                 try {
-                    const history = await pruneHistory();
+                    const history = await withHistoryLock(pruneHistory);
                     if (!history.length) {
                         webview.postMessage({
                             command: 'versionHistoryError',
@@ -1586,9 +1745,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     const picked = await vscode.window.showQuickPick(
                         buildSharedVersionHistoryItems(sorted, (entry) => ({
                             label: entry.id === oldestVersionId && entry.id === restoredVersionId
-                                ? 'Original File (Restored)'
+                                ? 'Earliest Saved Version (Restored)'
                                 : entry.id === oldestVersionId
-                                    ? 'Original File'
+                                    ? 'Earliest Saved Version'
                                     : entry.id === restoredVersionId
                                         ? 'Restored'
                                         : formatVersionHistoryTimestamp(entry.timestamp),
@@ -1660,7 +1819,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                         return;
                     }
 
-                    const history = await pruneHistory();
+                    const history = await withHistoryLock(pruneHistory);
                     const entry = history.find(item => item.id === versionId);
                     if (!entry) {
                         webview.postMessage({
@@ -1997,7 +2156,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                     }
 
                     await assertFileUnchanged();
-                    await assertXlsxRoundTripSupported(document.uri.fsPath);
+                    const originalParts = await assertXlsxRoundTripSupported(document.uri.fsPath);
                     const workbook = new Excel.Workbook();
                     await loadExcelWorkbook(document.uri.fsPath, workbook);
                     const ws = workbook.worksheets[sheetIndex];
@@ -2005,10 +2164,49 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                         throw new Error('Worksheet not found');
                     }
 
+                    const anyFormula = (operations.length > 0 || edits.length > 0 || richEdits.length > 0) && workbookHasFormulas(workbook);
+                    if (anyFormula && operations.some((op: { type: string }) => op.type !== 'insertControl')) {
+                        throw new Error('此工作簿中有公式，行列、移位或合并操作可能影响本页或跨页引用。请在 Excel 中完成，此次未保存。');
+                    }
+                    if (operations.some((op: { type: string }) => movesXlsxCoordinates(op.type))) {
+                        const hasDependentRules = workbook.worksheets.some(sheet => {
+                            const model = sheet.model as Excel.WorksheetModel & { dataValidations?: object; conditionalFormattings?: unknown[] };
+                            return Object.keys(model.dataValidations ?? {}).length > 0 || Boolean(model.conditionalFormattings?.length);
+                        });
+                        if (hasDependentRules || workbook.definedNames.model.length || ws.autoFilter || ws.getTables().length || ws.model.media.length) {
+                            throw new Error('工作簿有依赖坐标的定义名称、筛选、表格、验证、条件格式或媒体。请在 Excel 中调整结构，此次未保存。');
+                        }
+                    }
+                    const hadMerges = workbook.worksheets.some(sheet => sheet.hasMerges);
+
                     for (const op of operations) {
                         const type = typeof op?.type === 'string' ? op.type : '';
                         const index = typeof op?.index === 'number' ? op.index : 0;
                         if (!type) continue;
+
+                        const movesCoordinates = movesXlsxCoordinates(type);
+                        const mergesBefore = movesCoordinates ? mergeSignature(ws) : '';
+                        if (movesCoordinates) {
+                            const affectsMerge = mergesBefore && mergesBefore.split('\n').some(address => {
+                                const range = this.parseRange(address);
+                                if (!range) {
+                                    return true;
+                                }
+                                if (type.startsWith('insertRow') || type === 'deleteRow') {
+                                    return range.endRow >= index + (type === 'insertRowBelow' ? 1 : 0);
+                                }
+                                if (type.startsWith('insertColumn') || type === 'deleteColumn') {
+                                    return range.endCol >= index + (type === 'insertColumnRight' ? 1 : 0);
+                                }
+                                if (type === 'insertCellShiftRight' || type === 'deleteCellShiftLeft') {
+                                    return range.startRow <= op.row && op.row <= range.endRow && range.endCol >= op.col;
+                                }
+                                return range.startCol <= op.col && op.col <= range.endCol && range.endRow >= op.row;
+                            });
+                            if (affectsMerge) {
+                                throw new Error('该结构操作会移动或覆盖合并区域，请在 Excel 中操作，此次未保存。');
+                            }
+                        }
 
                         switch (type) {
                             case 'insertRowAbove':
@@ -2066,7 +2264,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                             case 'deleteCellShiftLeft': {
                                 const row = typeof op?.row === 'number' ? op.row : 0;
                                 const col = typeof op?.col === 'number' ? op.col : 0;
-                                if (!row || !col) break;
+                                if (!row || !col || row > ws.rowCount || col > ws.columnCount) {
+                                    throw new Error('单元格移位超出已有表格范围，未保存。');
+                                }
 
                                 for (let c = col; c < ws.columnCount; c++) {
                                     const src = ws.getRow(row).getCell(c + 1);
@@ -2079,7 +2279,9 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                             case 'deleteCellShiftUp': {
                                 const row = typeof op?.row === 'number' ? op.row : 0;
                                 const col = typeof op?.col === 'number' ? op.col : 0;
-                                if (!row || !col) break;
+                                if (!row || !col || row > ws.rowCount || col > ws.columnCount) {
+                                    throw new Error('单元格移位超出已有表格范围，未保存。');
+                                }
 
                                 for (let r = row; r < ws.rowCount; r++) {
                                     const src = ws.getRow(r + 1).getCell(col);
@@ -2129,6 +2331,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                                 if (!row || !col || !controlType) break;
 
                                 const cell = ws.getRow(row).getCell(col);
+                                assertFormulaEditSupported(cell, defaultValue);
 
                                 if (controlType === 'checkbox') {
                                     const normalized = defaultValue.trim().toLowerCase();
@@ -2186,21 +2389,25 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                                 break;
                             }
                         }
+                        if (movesCoordinates && mergeSignature(ws) !== mergesBefore) {
+                            throw new Error('结构操作的合并区域校验失败，未保存。');
+                        }
                     }
 
+                    const plainEditsByCell = new Map<string, string>(edits.map((edit: { row: number; col: number; value: string }) => [`${edit.row}:${edit.col}`, edit.value]));
                     const richEditedKeys = new Set<string>();
                     for (const rich of richEdits) {
                         const row = typeof rich?.row === 'number' ? rich.row : 0;
                         const col = typeof rich?.col === 'number' ? rich.col : 0;
-                        const runs = Array.isArray(rich?.runs) ? rich.runs : [];
+                        const runs: Array<{ text: string; bold?: boolean; italic?: boolean; color?: string }> = Array.isArray(rich?.runs) ? rich.runs : [];
                         if (!row || !col || !runs.length) continue;
 
                         const richText = runs
-                            .map((r: any) => {
+                            .map((r): Excel.RichText | null => {
                                 const text = typeof r?.text === 'string' ? r.text : '';
                                 if (!text) return null;
 
-                                const font: any = {};
+                                const font: Partial<Excel.Font> = {};
                                 if (r.bold === true) font.bold = true;
                                 if (r.italic === true) font.italic = true;
                                 const color = typeof r?.color === 'string' ? r.color : '';
@@ -2209,13 +2416,33 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
                                 return Object.keys(font).length > 0 ? { text, font } : { text };
                             })
-                            .filter((v: any) => !!v);
+                            .filter((run): run is Excel.RichText => run !== null);
 
                         if (!richText.length) continue;
 
                         const cell = ws.getRow(row).getCell(col);
-                        cell.value = { richText } as any;
-                        richEditedKeys.add(row + ':' + col);
+                        const key = `${row}:${col}`;
+                        const plainEdit = plainEditsByCell.get(key);
+                        const runText = richText.map(run => run.text).join('');
+                        if (isFormulaCell(cell) && plainEdit === undefined && runText === this.getCellValue(cell)) {
+                            continue; // The renderer can resend the unchanged, formatted formula result.
+                        }
+                        assertFormulaEditSupported(cell, runText);
+                        const numeric = parseExistingNumericCellText(cell, plainEdit ?? runText);
+                        if (numeric !== undefined) {
+                            if (plainEdit === undefined) {
+                                cell.value = numeric;
+                                richEditedKeys.add(key);
+                            }
+                            continue;
+                        }
+                        // The Webview also sends rich runs for plain typing when the DOM changes.
+                        // Prefer the explicit plain edit for ordinary cells without inline formatting.
+                        if (plainEdit !== undefined && cell.type !== Excel.ValueType.RichText && !richText.some(run => run.font)) {
+                            continue;
+                        }
+                        cell.value = { richText };
+                        richEditedKeys.add(key);
                     }
 
                     const parseBooleanText = (value: string): boolean | null => {
@@ -2273,12 +2500,12 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                         const col = typeof edit.col === 'number' ? edit.col : undefined;
                         if (!row || !col) continue;
 
+                        const newText = typeof edit.value === 'string' ? edit.value : '';
+                        const cell = ws.getRow(row).getCell(col);
+                        assertFormulaEditSupported(cell, newText);
                         if (richEditedKeys.has(row + ':' + col)) {
                             continue;
                         }
-
-                        const newText = typeof edit.value === 'string' ? edit.value : '';
-                        const cell = ws.getRow(row).getCell(col);
                         const asBool = parseBooleanText(newText);
                         const shouldStoreBoolean = asBool !== null && (typeof cell.value === 'boolean' || isBooleanValidationCell(cell));
                         const shouldStoreRating = isRatingValidationCell(cell);
@@ -2306,7 +2533,7 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                                 cell.value = newText;
                             }
                         } else {
-                            cell.value = newText;
+                            cell.value = parseExistingNumericCellText(cell, newText) ?? newText;
                         }
                     }
 
@@ -2456,8 +2683,24 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                         }
                     }
 
+                    if (anyFormula && (edits.length || richEditedKeys.size || operations.length)) {
+                        workbook.calcProperties.fullCalcOnLoad = true;
+                    }
+                    const expectedMerges = operations.length && (hadMerges || workbook.worksheets.some(sheet => sheet.hasMerges))
+                        ? workbook.worksheets.map(mergeSignature) : null;
                     await assertFileUnchanged();
-                    await writeFileAtomically(document.uri.fsPath, temporaryPath => workbook.xlsx.writeFile(temporaryPath));
+                    await writeFileAtomically(document.uri.fsPath, async temporaryPath => {
+                        await workbook.xlsx.writeFile(temporaryPath);
+                        await assertXlsxPartsPreserved(originalParts, temporaryPath);
+                        if (expectedMerges) {
+                            const written = new Excel.Workbook();
+                            await loadExcelWorkbook(temporaryPath, written);
+                            if (JSON.stringify(written.worksheets.map(mergeSignature)) !== JSON.stringify(expectedMerges)) {
+                                throw new Error('写入后无法保留合并区域，未覆盖原文件。');
+                            }
+                        }
+                        await assertFileUnchanged();
+                    });
                     lastKnownFileHash = await hashFile(filePath);
                     lastSaveTime = Date.now();
                     const saveWarnings: string[] = [];
@@ -2520,11 +2763,13 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
                 return;
             }
             try {
-                if (document.uri.scheme === 'file' && await hashFile(filePath) !== lastKnownFileHash) {
+                if (document.uri.scheme === 'file' && await readCurrentFileHash() !== lastKnownFileHash) {
                     webview.postMessage({ command: 'externalFileChanged' });
                 }
-            } catch {
-                // The save path checks the fingerprint independently.
+            } catch (error) {
+                if (error instanceof DelimitedFileLimitError) {
+                    webview.postMessage({ command: 'externalFileChanged' });
+                }
             }
         });
         webviewPanel.onDidDispose(() => {
@@ -2534,10 +2779,16 @@ export class SpreadsheetEditorProvider implements vscode.CustomReadonlyEditorPro
 
         try {
             await loadWorkbookPayload();
-            trySendSettings();
-            trySendInit();
+            hasLoadedWorkbook = true;
+            if (isWebviewReady) {
+                await initializeReadyWebview();
+            }
         } catch (error) {
-            vscode.window.showErrorMessage(`Error reading XLSX file: ${error}`);
+            if (error instanceof DelimitedFileLimitError) {
+                await fallbackToTextEditor(error);
+            } else {
+                void vscode.window.showErrorMessage(`Error reading spreadsheet: ${error}`);
+            }
         }
     }
 
