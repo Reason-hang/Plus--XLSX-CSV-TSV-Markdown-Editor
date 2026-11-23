@@ -40,7 +40,10 @@ export function reconcileEditorLineEndings(previousSource: string, editorValue: 
     const end = rawOffset(previousEnd);
     const before = previousSource.slice(0, start);
     const after = previousSource.slice(end);
-    const preceding = before.match(/(?:\r\n|\r|\n)(?![\s\S]*(?:\r\n|\r|\n))/)?.[0];
+    const lineEnd = Math.max(before.lastIndexOf('\r'), before.lastIndexOf('\n'));
+    const preceding = before[lineEnd] === '\n' && before[lineEnd - 1] === '\r'
+        ? '\r\n'
+        : before[lineEnd];
     const following = after.match(/\r\n|\r|\n/)?.[0];
     const insertedNewline = preceding || following || '\n';
     return before + value.slice(prefix, valueEnd).replace(/\n/g, insertedNewline) + after;

@@ -14,8 +14,6 @@ export const WEBVIEW_LIMITS = {
     maxMarkdownContentBytes: 8 * 1024 * 1024,
     maxImageSources: 256,
     maxSourceLength: 4096,
-    maxPdfBase64Chars: 16 * 1024 * 1024,
-    maxPdfBytes: 12 * 1024 * 1024,
     maxFeedbackFields: 32,
     maxFeedbackFieldLength: 4096,
     maxFeedbackBodyBytes: 32 * 1024,
@@ -40,6 +38,7 @@ const MARKDOWN_COMMANDS = new Set([
     'cancelVersionPreview',
     'disableMdEditor',
     'enableMdEditor',
+    'exportMarkdownPdf',
     'getSystemDetails',
     'openExternal',
     'openRelativeFile',
@@ -49,7 +48,6 @@ const MARKDOWN_COMMANDS = new Set([
     'restoreVersion',
     'saveMarkdown',
     'saveMdToolbarLayout',
-    'savePdfData',
     'setLanguage',
     'showVersionHistory',
     'submitFeedback',
@@ -329,17 +327,6 @@ function validateFeedbackData(value: unknown): WebviewMessageValidationResult {
     return pass();
 }
 
-function validateBase64(value: unknown): WebviewMessageValidationResult {
-    if (typeof value !== 'string' || !value || value.length > WEBVIEW_LIMITS.maxPdfBase64Chars || !/^[A-Za-z0-9+/]*={0,2}$/.test(value) || value.length % 4 !== 0) {
-        return reject('WEBVIEW_FIELD_INVALID', 'PDF 数据不是合法的 Base64 字符串。');
-    }
-    const decodedBytes = Math.floor(value.length * 3 / 4) - (value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0);
-    if (decodedBytes > WEBVIEW_LIMITS.maxPdfBytes) {
-        return reject('WEBVIEW_LIMIT_EXCEEDED', `PDF 解码后不能超过 ${WEBVIEW_LIMITS.maxPdfBytes} 字节。`);
-    }
-    return pass();
-}
-
 export function validateWebviewMessage(message: unknown, surface: WebviewSurface): WebviewMessageValidationResult {
     if (!isRecord(message)) {return reject('WEBVIEW_FIELD_INVALID', 'Webview 消息必须是对象。');}
 
@@ -390,8 +377,10 @@ export function validateWebviewMessage(message: unknown, surface: WebviewSurface
                 return reject('WEBVIEW_FIELD_INVALID', 'silent 必须是布尔值。');
             }
             return validateString(message.text, 'Markdown 正文', WEBVIEW_LIMITS.maxMarkdownContentBytes);
-        case 'savePdfData':
-            return validateBase64(message.data);
+        case 'exportMarkdownPdf':
+            return Object.keys(message).length === 1
+                ? pass()
+                : reject('WEBVIEW_FIELD_INVALID', 'Markdown 导出命令无需附带数据。');
         case 'submitFeedback':
             return validateFeedbackData(message.data);
         case 'openExternal':

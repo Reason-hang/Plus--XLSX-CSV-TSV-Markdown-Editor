@@ -133,13 +133,11 @@ export function previewSourceValues(preview: HTMLElement, mapping: PreviewSource
 
 /** Replace mapped ranges only after the entire new rendering matches the requested text edits. */
 export function mappedPreviewDraft(
-    preview: HTMLElement,
     mapping: PreviewSourceMapping,
+    values: string[],
     render: (source: string) => HTMLElement,
     comparableHtml: (root: HTMLElement) => string
 ): string | null {
-    const values = previewSourceValues(preview, mapping);
-    if (!values) return null;
     const changed = mapping.ranges.map((range, index) => ({ ...range, value: values[index] }))
         .filter(range => range.value !== range.original);
     if (!changed.length) return mapping.source;

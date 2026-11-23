@@ -28,7 +28,6 @@ import { SettingsManager, SettingDefinition } from '../shared/settingsManager';
 import { ToolbarManager } from '../shared/toolbarManager';
 import { applyToolbarLayout } from '../shared/toolbarLayout';
 import { Utils } from '../shared/utils';
-import { MdToPdfExporter } from './mdToPdfExporter';
 import { MdToolbarController } from './mdToolbarController';
 import { getPreviewEditTrailingNewlines, hasUnsafePreviewEditSource, reconcileEditorLineEndings } from './previewEditSafety';
 import { mappedPreviewDraft, preparePreviewSourceMapping, previewSourceValues, unwrapPreviewSourceRanges, PreviewBlockRange, PreviewSourceMapping } from './previewSourceMapping';
@@ -488,6 +487,13 @@ function isPreviewWysiwygTarget(): boolean {
 
 // ===== Utilities =====
 const $ = Utils.$;
+const reservedMarkdownIds = new Set([
+    'previewDraftRecovery', 'versionPreviewBanner', 'versionPreviewText', 'restoreVersionButton',
+    'cancelVersionPreviewButton', 'toastNotification', 'toastText', 'saveToast', 'editorLineMeasureHost',
+    'xlsx-viewer-external-markdown-theme', 'feedbackForm', 'feedbackSystemDetails', 'feedbackCancelBtn',
+    'feedbackSubmitBtn', 'githubIssueBtn', 'followUpYes', 'followUpNo', 'emailContainer', 'emailInput',
+    'feedbackWarningPopup', 'warningCancelBtn', 'warningSubmitBtn'
+]);
 
 function slugify(text: string) {
     return text
@@ -1162,7 +1168,8 @@ md.renderer.rules.fence = function (tokens: any, idx: number, options: any, env:
 };
 
 function addHeadingIds(tokens: any[]) {
-    const slugCounts: Record<string, number> = {};
+    const slugCounts = new Map<string, number>();
+    const usedIds = new Set(reservedMarkdownIds);
     for (let i = 0; i < tokens.length; i++) {
         const token = tokens[i];
         if (token.type === 'heading_open') {
@@ -1171,9 +1178,13 @@ function addHeadingIds(tokens: any[]) {
             const baseSlug = slugify(text);
             if (!baseSlug) continue;
 
-            const count = (slugCounts[baseSlug] || 0) + 1;
-            slugCounts[baseSlug] = count;
-            const id = count > 1 ? `${baseSlug}-${count}` : baseSlug;
+            let count = (slugCounts.get(baseSlug) ?? 0) + 1;
+            let id = count > 1 ? `${baseSlug}-${count}` : baseSlug;
+            while (usedIds.has(id)) {
+                id = `${baseSlug}-${++count}`;
+            }
+            slugCounts.set(baseSlug, count);
+            usedIds.add(id);
             token.attrSet('id', id);
             token.attrJoin('class', 'md-heading');
         }
@@ -1360,6 +1371,7 @@ function isSafeRenderedUrl(value: string, attributeName: string): boolean {
 function sanitizeRenderedMarkdownHtml(html: string): string {
     const template = document.createElement('template');
     template.innerHTML = html;
+    const parsedStyle = document.createElement('span').style;
 
     template.content.querySelectorAll(
         'script, style, iframe, object, embed, base, meta, link, portal, form, foreignObject'
@@ -1373,8 +1385,27 @@ function sanitizeRenderedMarkdownHtml(html: string): string {
                 return;
             }
 
-            if (name === 'style' && /url\s*\(|@import|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:/i.test(attribute.value)) {
-                element.removeAttribute(attribute.name);
+            if (name === 'id' && reservedMarkdownIds.has(attribute.value)) {
+                element.removeAttribute('id');
+                return;
+            }
+
+            if (name === 'style') {
+                if (/url\s*\(|@import|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:/i.test(attribute.value)) {
+                    element.removeAttribute('style');
+                    return;
+                }
+                parsedStyle.cssText = attribute.value;
+                const position = parsedStyle.getPropertyValue('position').trim().toLowerCase();
+                const hasLayer = Boolean(parsedStyle.getPropertyValue('z-index'));
+                const unsafePosition = position && position !== 'static' && position !== 'relative';
+                if (unsafePosition || hasLayer) {
+                    // KaTeX needs relative positioning and offsets for its inline layout.
+                    if (unsafePosition) parsedStyle.removeProperty('position');
+                    parsedStyle.removeProperty('z-index');
+                    if (parsedStyle.cssText) element.setAttribute('style', parsedStyle.cssText);
+                    else element.removeAttribute('style');
+                }
                 return;
             }
 
@@ -1444,32 +1475,31 @@ function renderMarkdown(content: string) {
             }
         });
         updateToc(tokens);
+        // Capture the draft baseline with the DOM, before any save or mode switch.
+        if (isEditMode) {
+            enhancePreviewTablesForEditing();
+            if (!isPreviewEditMode) {
+                const source = editor?.value ?? currentContent;
+                const roundTrip = sanitizeMarkdownCopyLinkArtifacts(previewToMarkdown());
+                splitPreviewTrailingNewlines = hasUnsafeSplitTabs(source) || /<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(getPreviewEditHtml(preview))
+                    ? null : getPreviewEditTrailingNewlines(source, roundTrip);
+                if (splitPreviewTrailingNewlines === null) {
+                    configurePreviewEditing(preview, splitEditorSource, true);
+                } else {
+                    previewSourceMapping = null;
+                    preview.classList.remove('mapped-preview');
+                    setMappedFormattingAvailability(false);
+                    preview.contentEditable = 'true';
+                }
+                splitPreviewBaselineHtml = getPreviewEditHtml(preview);
+                initializePreviewHistory();
+            } else {
+                preview.contentEditable = 'true';
+            }
+        }
         requestAnimationFrame(() => {
             if (currentRenderEpoch !== renderEpoch) return;
             reportScrollDiagnostic('render-after-replace', true);
-            // Any edit mode: keep the rendered side editable (WYSIWYG) with table tools
-            if (isEditMode) {
-                enhancePreviewTablesForEditing();
-                if (!isPreviewEditMode) {
-                    const source = ($('markdownEditor') as HTMLTextAreaElement | null)?.value ?? currentContent;
-                    const roundTrip = sanitizeMarkdownCopyLinkArtifacts(previewToMarkdown());
-                    splitPreviewTrailingNewlines = hasUnsafeSplitTabs(source) || /<(?:mark|sub|sup|ins|details|summary|abbr)\b/i.test(getPreviewEditHtml(preview))
-                        ? null : getPreviewEditTrailingNewlines(source, roundTrip);
-                    if (splitPreviewTrailingNewlines === null) {
-                        // Preserve the original source and allow only text with a reliable source range.
-                        configurePreviewEditing(preview, splitEditorSource, true);
-                    } else {
-                        previewSourceMapping = null;
-                        preview.classList.remove('mapped-preview');
-                        setMappedFormattingAvailability(false);
-                        preview.contentEditable = 'true';
-                    }
-                    splitPreviewBaselineHtml = getPreviewEditHtml(preview);
-                    initializePreviewHistory();
-                } else {
-                    preview.contentEditable = 'true';
-                }
-            }
             updateScrollSpy();
             updateProgressBar();
             reapplySearch();
@@ -1582,11 +1612,9 @@ function setEditMode(enabled: boolean, discardPreviewDraft = false) {
 
         // Cache line height and lock outer scroll after entering edit mode
         requestAnimationFrame(() => {
+            if (!isEditMode || isPreviewEditMode) return;
             updateCachedLineHeight();
             updateFormattingToolbarHeight();
-
-            enhancePreviewTablesForEditing();
-            initializePreviewHistory();
 
             // Lock outer scroll containers completely
             window.scrollTo(0, 0);
@@ -1601,7 +1629,7 @@ function setEditMode(enabled: boolean, discardPreviewDraft = false) {
                 container.scrollLeft = 0;
             }
 
-            if (editor) {
+            if (editor && activePane !== 'preview') {
                 editor.scrollTop = 0;
                 editor.scrollLeft = 0;
                 editor.focus({ preventScroll: true });
@@ -1735,10 +1763,11 @@ function configurePreviewEditing(preview: HTMLElement, source: string, forceMapp
     preview.insertBefore(notice, preview.firstChild);
 }
 
-function getMappedPreviewDraft(preview: HTMLElement, checkIntegrity = true): string | null {
-    if (!previewSourceMapping || previewSourceMapping.composing) return null;
-    if (checkIntegrity && !hasMappedPreviewIntegrity(preview, previewSourceMapping)) return null;
-    return mappedPreviewDraft(preview, previewSourceMapping, renderPreviewForComparison, comparablePreviewHtml);
+function getMappedPreviewDraft(preview: HTMLElement): string | null {
+    const mapping = previewSourceMapping;
+    if (!mapping || mapping.composing || !hasMappedPreviewIntegrity(preview, mapping)) return null;
+    const values = previewSourceValues(preview, mapping);
+    return values ? mappedPreviewDraft(mapping, values, renderPreviewForComparison, comparablePreviewHtml) : null;
 }
 
 function hasMappedPreviewIntegrity(preview: HTMLElement, mapping: PreviewSourceMapping): boolean {
@@ -1755,18 +1784,25 @@ function hasMappedPreviewIntegrity(preview: HTMLElement, mapping: PreviewSourceM
     return getPreviewEditHtml(clone) === mapping.previewBaselineHtml;
 }
 
-function validateMappedPreviewInput(preview: HTMLElement): boolean {
+function validateMappedPreviewInput(preview: HTMLElement): string | null {
     const mapping = previewSourceMapping;
-    if (!mapping || mapping.composing) return true;
+    if (!mapping || mapping.composing) return null;
+    if (!hasMappedPreviewIntegrity(preview, mapping)) {
+        showPreviewDraftRecovery(preview);
+        return null;
+    }
     const values = previewSourceValues(preview, mapping);
-    if (values && getMappedPreviewDraft(preview, false) !== null) {
-        mapping.accepted = values;
-        return true;
+    if (values) {
+        const draft = mappedPreviewDraft(mapping, values, renderPreviewForComparison, comparablePreviewHtml);
+        if (draft !== null) {
+            mapping.accepted = values;
+            return draft;
+        }
     }
     const wrappers = preview.querySelectorAll<HTMLElement>(`[data-preview-source-key="${mapping.key}"]`);
     if (wrappers.length !== mapping.ranges.length) {
         showPreviewDraftRecovery(preview);
-        return false;
+        return null;
     }
     const selection = window.getSelection();
     const anchor = selection?.anchorNode;
@@ -1778,7 +1814,7 @@ function validateMappedPreviewInput(preview: HTMLElement): boolean {
         const index = Number(wrapper.getAttribute('data-preview-source-index'));
         if (!Number.isInteger(index) || mapping.accepted[index] === undefined || seen.has(index)) {
             showPreviewDraftRecovery(preview);
-            return false;
+            return null;
         }
         seen.add(index);
     }
@@ -1794,7 +1830,7 @@ function validateMappedPreviewInput(preview: HTMLElement): boolean {
         selection.addRange(range);
     }
     showToast('刚才的输入无法安全保存，已撤回该次输入；可切换到分屏源码修改。', true);
-    return false;
+    return null;
 }
 
 function showPreviewDraftRecovery(preview: HTMLElement): void {
@@ -1915,7 +1951,6 @@ function setPreviewEditMode(enabled: boolean) {
         renderMarkdown(currentContent);
 
         if (preview) {
-            enhancePreviewTablesForEditing();
             configurePreviewEditing(preview, currentContent);
             initializePreviewHistory();
             preview.focus({ preventScroll: true });
@@ -2129,7 +2164,7 @@ function schedulePreviewToEditorSync() {
 
 // Split Edit: write the rendered side back into the textarea WITHOUT re-rendering the preview
 // (re-rendering would reset the caret while the user is typing there).
-function pushPreviewEditsToEditor(): boolean {
+function pushPreviewEditsToEditor(validatedDraft?: string): boolean {
     if (previewToEditorTimer !== null) {
         window.clearTimeout(previewToEditorTimer);
         previewToEditorTimer = null;
@@ -2156,7 +2191,7 @@ function pushPreviewEditsToEditor(): boolean {
             showPreviewDraftRecovery(preview);
             return false;
         }
-        const draft = getMappedPreviewDraft(preview);
+        const draft = validatedDraft ?? getMappedPreviewDraft(preview);
         if (draft === null) {
             showPreviewDraftRecovery(preview);
             return false;
@@ -3792,7 +3827,6 @@ window.addEventListener('message', (event) => {
             if (wasPreviewEditMode) {
                 const preview = $('markdownPreview');
                 if (preview) {
-                    enhancePreviewTablesForEditing();
                     configurePreviewEditing(preview, currentContent);
                     initializePreviewHistory();
                 }
@@ -4099,20 +4133,7 @@ function buildToolbarButtons() {
 
                 showToast(I18n.t('toast.pdfGenerating', 'Generating PDF... Please wait.'));
 
-                setTimeout(async () => {
-                    try {
-                        const blob = await MdToPdfExporter.exportToPdf(preview);
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                            const base64Data = (reader.result as string).split(',')[1];
-                            vscode.postMessage({ command: 'savePdfData', data: base64Data });
-                        };
-                        reader.readAsDataURL(blob);
-                    } catch (err: any) {
-                        console.error('PDF export error:', err);
-                        showToast(I18n.t('toast.pdfFailed', 'Failed to generate PDF: {0}', (err?.message || err)));
-                    }
-                }, 50);
+                vscode.postMessage({ command: 'exportMarkdownPdf' });
             }
         },
         {
@@ -5448,7 +5469,7 @@ function wireEditor() {
                 }
             }
         });
-        preview.addEventListener('blur', pushPreviewEditsToEditor);
+        preview.addEventListener('blur', () => pushPreviewEditsToEditor());
     }
 
     editor.addEventListener('scroll', throttledSyncEditorToPreview, { passive: true });
@@ -5931,8 +5952,9 @@ function wirePreviewInteractions() {
     preview.addEventListener('compositionend', () => {
         if (!previewSourceMapping) return;
         previewSourceMapping.composing = false;
-        if (validateMappedPreviewInput(preview)) {
-            if (!isPreviewEditMode && !pushPreviewEditsToEditor()) return;
+        const draft = validateMappedPreviewInput(preview);
+        if (draft !== null) {
+            if (!isPreviewEditMode && !pushPreviewEditsToEditor(draft)) return;
             schedulePreviewHistoryCapture();
             scheduleMarkdownAutoSave();
         }
@@ -5940,8 +5962,8 @@ function wirePreviewInteractions() {
 
     preview.addEventListener('input', () => {
         if (previewSourceMapping) {
-            if (previewSourceMapping.composing || !validateMappedPreviewInput(preview)) return;
-            if (!isPreviewEditMode && !pushPreviewEditsToEditor()) return;
+            const draft = validateMappedPreviewInput(preview);
+            if (draft === null || (!isPreviewEditMode && !pushPreviewEditsToEditor(draft))) return;
         }
         schedulePreviewHistoryCapture();
         scheduleMarkdownAutoSave();
@@ -6122,6 +6144,8 @@ initScrollSpy();
 initMdScrollToTop();
 initResizeHandles();
 updateHeaderHeight();
+// Snapshot the extension UI before any Markdown document has been rendered.
+document.querySelectorAll('[id]').forEach(element => reservedMarkdownIds.add(element.id));
 
 // Ensure settings are applied once toolbar is ready
 if (currentSettings) {

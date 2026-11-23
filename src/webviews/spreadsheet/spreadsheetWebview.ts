@@ -11,7 +11,7 @@ import { vscode, VirtualScrollConfig, debounce, throttleRAF } from '../shared/co
 import { VirtualLoader } from '../shared/virtualLoader';
 import { InfoTooltip } from '../shared/infoTooltip';
 import { detectIsRTL } from '../shared/rtlUtils';
-import { createXlsxRowHtml, getExcelColumnLabel, renderDropdownCellContent } from './components/spreadsheetRenderComponent';
+import { createXlsxRowHtml, getExcelColumnLabel, renderDropdownCellContent, richCellText } from './components/spreadsheetRenderComponent';
 import { XlsxSelectionManager } from './components/spreadsheetSelectionComponent';
 import { createXlsxToolbarButtons } from './components/spreadsheetToolbarComponent';
 import { I18n } from '../shared/i18n';
@@ -4636,16 +4636,6 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         return null;
     }
 
-    function stripHtmlForDataOps(value: string): string {
-        if (!/[<&]/.test(value)) {
-            return value;
-        }
-
-        const tmp = document.createElement('div');
-        tmp.innerHTML = value;
-        return (tmp.textContent || tmp.innerText || '').replace(/\u00a0/g, ' ');
-    }
-
     function readCellTextForDataOps(rowData: any, colZeroBased: number): string {
         const cell = getCellFromRow(rowData, colZeroBased + 1);
         if (!cell) return '';
@@ -4656,7 +4646,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
         }
 
         if (typeof value === 'string') {
-            return stripHtmlForDataOps(value);
+            return cell.isRichText === true ? richCellText(value) : value;
         }
 
         if (typeof value === 'number' || typeof value === 'boolean') {
@@ -4679,7 +4669,7 @@ import { copySelectionToClipboard as copySelectionToClipboardHelper, writeToClip
             }
         }
 
-        return stripHtmlForDataOps(String(value));
+        return String(value);
     }
 
     function parseSortableNumber(value: string): number | null {

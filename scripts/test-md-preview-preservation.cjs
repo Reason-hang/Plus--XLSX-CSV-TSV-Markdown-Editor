@@ -354,6 +354,18 @@ async function mappedSplitConflictRecovery() {
     } finally { ctx.dom.window.close(); }
 }
 
+async function splitPreviewReadyBeforeFirstFrame() {
+    const source = '待直接编辑的正文\r\n\r\n~~~text\r\n\tpreserve\r\n~~~\r\n';
+    const ctx = await create(source);
+    try {
+        ctx.w.document.getElementById('toggleEditModeButton').click();
+        assert.strictEqual(ctx.preview.contentEditable, 'true', 'split preview must be ready before the first animation frame');
+        edit(ctx, mapped(ctx, '待直接编辑的正文'), '已经直接编辑的正文');
+        ctx.w.document.getElementById('saveEditsButton').click();
+        assert.strictEqual(saves(ctx).at(-1)?.text, source.replace('待直接编辑的正文', '已经直接编辑的正文'));
+    } finally { ctx.dom.window.close(); }
+}
+
 async function extraSample(file) {
     const source = fs.readFileSync(file, 'utf8');
     const ctx = await create(source);
@@ -405,6 +417,7 @@ async function extraSample(file) {
 }
 
 (async () => {
+    await splitPreviewReadyBeforeFirstFrame();
     await complexSaveAndSwitch();
     await saveInFlight();
     await autoSaveAndLimits();

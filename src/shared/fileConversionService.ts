@@ -4,6 +4,7 @@ import * as Excel from 'exceljs';
 import * as vscode from 'vscode';
 import { TextDecoder } from 'util';
 import { loadExcelWorkbook } from '../spreadsheet/spreadsheetUtilities';
+import { resolveExcelCellValue } from '../spreadsheet/cellValue';
 import { writeFileAtomically } from './atomicFile';
 
 function getCsvDelimiter(): string {
@@ -28,12 +29,19 @@ export interface TabularWorkbookData {
     sheets: TabularSheetData[];
 }
 
+export interface DelimitedFileLimits {
+    maxBytes: number;
+    assertDimensions(rows: number, columns: number): void;
+}
+
+export class DelimitedFileLimitError extends Error {}
+
 export interface TabularFileConverter {
     type: TabularFileType;
     label: string;
     extension: string;
-    read(filePath: string): Promise<TabularWorkbookData>;
-    write(filePath: string, workbook: TabularWorkbookData): Promise<void>;
+    read(filePath: string, delimitedLimits?: DelimitedFileLimits): Promise<TabularWorkbookData>;
+    write(filePath: string, workbook: TabularWorkbookData, delimitedLimits?: DelimitedFileLimits): Promise<void>;
 }
 
 const convertersByType = new Map<TabularFileType, TabularFileConverter>();
@@ -83,13 +91,35 @@ function normalizeWorkbook(workbook: TabularWorkbookData): TabularWorkbookData {
     };
 }
 
-function parseDelimitedText(content: string, delimiter: string, quotedCells?: boolean[][]): string[][] {
+function parseDelimitedText(content: string, delimiter: string, quotedCells?: boolean[][], limits?: DelimitedFileLimits): string[][] {
     const rows: string[][] = [];
     let row: string[] = [];
     let rowQuotes: boolean[] = [];
     let field = '';
     let inQuotes = false;
     let fieldQuoted = false;
+    let maxColumns = 0;
+
+    const pushField = () => {
+        if (limits) {
+            maxColumns = Math.max(maxColumns, row.length + 1);
+            limits.assertDimensions(rows.length + 1, maxColumns);
+        }
+        row.push(field);
+        if (quotedCells) {
+            rowQuotes.push(fieldQuoted);
+        }
+        field = '';
+        fieldQuoted = false;
+    };
+
+    const pushRow = () => {
+        pushField();
+        rows.push(row);
+        quotedCells?.push(rowQuotes);
+        row = [];
+        rowQuotes = [];
+    };
 
     for (let i = 0; i < content.length; i++) {
         const ch = content[i];
@@ -108,37 +138,15 @@ function parseDelimitedText(content: string, delimiter: string, quotedCells?: bo
         }
 
         if (!inQuotes && ch === delimiter) {
-            row.push(field);
-            rowQuotes.push(fieldQuoted);
-            field = '';
-            fieldQuoted = false;
+            pushField();
             continue;
         }
 
-        if (!inQuotes && ch === '\n') {
-            row.push(field);
-            rowQuotes.push(fieldQuoted);
-            rows.push(row);
-            quotedCells?.push(rowQuotes);
-            row = [];
-            rowQuotes = [];
-            field = '';
-            fieldQuoted = false;
-            continue;
-        }
-
-        if (!inQuotes && ch === '\r') {
-            if (i + 1 < content.length && content[i + 1] === '\n') {
+        if (!inQuotes && (ch === '\n' || ch === '\r')) {
+            if (ch === '\r' && content[i + 1] === '\n') {
                 i++;
             }
-            row.push(field);
-            rowQuotes.push(fieldQuoted);
-            rows.push(row);
-            quotedCells?.push(rowQuotes);
-            row = [];
-            rowQuotes = [];
-            field = '';
-            fieldQuoted = false;
+            pushRow();
             continue;
         }
 
@@ -146,13 +154,38 @@ function parseDelimitedText(content: string, delimiter: string, quotedCells?: bo
     }
 
     if (field.length > 0 || row.length > 0 || fieldQuoted) {
-        row.push(field);
-        rowQuotes.push(fieldQuoted);
-        rows.push(row);
-        quotedCells?.push(rowQuotes);
+        pushRow();
     }
 
     return rows;
+}
+
+function assertDelimitedByteCount(byteCount: number, maxBytes: number): void {
+    if (byteCount > maxBytes) {
+        throw new DelimitedFileLimitError(`CSV/TSV 超过表格视图的 ${maxBytes / (1024 * 1024)} MiB 文件上限。`);
+    }
+}
+
+export async function readDelimitedFileBytes(filePath: string, maxBytes: number): Promise<Buffer> {
+    const file = await fs.promises.open(filePath, 'r');
+    try {
+        assertDelimitedByteCount((await file.stat()).size, maxBytes);
+        const chunks: Buffer[] = [];
+        let total = 0;
+        while (total <= maxBytes) {
+            const chunk = Buffer.alloc(Math.min(64 * 1024, maxBytes - total + 1));
+            const { bytesRead } = await file.read(chunk, 0, chunk.length, total);
+            if (!bytesRead) {
+                break;
+            }
+            total += bytesRead;
+            assertDelimitedByteCount(total, maxBytes);
+            chunks.push(chunk.subarray(0, bytesRead));
+        }
+        return Buffer.concat(chunks, total);
+    } finally {
+        await file.close();
+    }
 }
 
 function serializeDelimitedRows(rows: string[][], delimiter: string, newline = '\n', finalNewline = true, quotedCells?: boolean[][]): string {
@@ -194,7 +227,7 @@ function rowsEqual(left: string[][], right: string[][]): boolean {
 }
 
 function getExcelCellValueAsString(cell: Excel.Cell): string {
-    const value = cell.value;
+    const value = resolveExcelCellValue(cell.value);
 
     if (value === null || value === undefined) {
         return '';
@@ -211,16 +244,11 @@ function getExcelCellValueAsString(cell: Excel.Cell): string {
     if (typeof value === 'object') {
         const objectValue = value as {
             text?: unknown;
-            result?: unknown;
             richText?: Array<{ text?: unknown }>;
         };
 
         if (typeof objectValue.text === 'string') {
             return objectValue.text;
-        }
-
-        if (objectValue.result !== null && objectValue.result !== undefined) {
-            return String(objectValue.result);
         }
 
         if (Array.isArray(objectValue.richText)) {
@@ -261,8 +289,9 @@ function createDelimitedConverter(type: string, label: string, defaultDelimiter:
         type,
         label,
         extension: type,
-        async read(filePath: string): Promise<TabularWorkbookData> {
-            const { content } = decodeDelimitedFile(await fs.promises.readFile(filePath));
+        async read(filePath: string, limits?: DelimitedFileLimits): Promise<TabularWorkbookData> {
+            const bytes = limits ? await readDelimitedFileBytes(filePath, limits.maxBytes) : await fs.promises.readFile(filePath);
+            const { content } = decodeDelimitedFile(bytes);
             let delimiter = defaultDelimiter;
             if (type === 'csv') {
                 delimiter = getCsvDelimiter();
@@ -270,11 +299,11 @@ function createDelimitedConverter(type: string, label: string, defaultDelimiter:
             return {
                 sheets: [{
                     name: 'Sheet1',
-                    rows: parseDelimitedText(content, delimiter)
+                    rows: parseDelimitedText(content, delimiter, undefined, limits)
                 }]
             };
         },
-        async write(filePath: string, workbook: TabularWorkbookData): Promise<void> {
+        async write(filePath: string, workbook: TabularWorkbookData, limits?: DelimitedFileLimits): Promise<void> {
             const normalized = normalizeWorkbook(workbook);
             const rows = normalized.sheets[0]?.rows ?? [];
             let delimiter = defaultDelimiter;
@@ -284,9 +313,10 @@ function createDelimitedConverter(type: string, label: string, defaultDelimiter:
             let format = { bom: false, newline: '\n', finalNewline: true };
             let quotedCells: boolean[][] | undefined;
             try {
-                const original = decodeDelimitedFile(await fs.promises.readFile(filePath));
+                const originalBytes = limits ? await readDelimitedFileBytes(filePath, limits.maxBytes) : await fs.promises.readFile(filePath);
+                const original = decodeDelimitedFile(originalBytes);
                 quotedCells = [];
-                const originalRows = parseDelimitedText(original.content, delimiter, quotedCells);
+                const originalRows = parseDelimitedText(original.content, delimiter, quotedCells, limits);
                 if (rowsEqual(originalRows, rows)) {
                     return; // Style-only or no-op save must not rewrite user bytes.
                 }
@@ -301,6 +331,9 @@ function createDelimitedConverter(type: string, label: string, defaultDelimiter:
             }
             const content = (format.bom ? '\uFEFF' : '') +
                 serializeDelimitedRows(rows, delimiter, format.newline, format.finalNewline, quotedCells);
+            if (limits) {
+                assertDelimitedByteCount(Buffer.byteLength(content, 'utf8'), limits.maxBytes);
+            }
             await writeFileAtomically(filePath, temporaryPath => fs.promises.writeFile(temporaryPath, content, 'utf8'));
         }
     };
@@ -436,7 +469,7 @@ export function getTargetTabularFileTypes(sourceType: TabularFileType): TabularF
     return getSupportedTabularFileTypes().filter(type => type !== sourceType);
 }
 
-export async function readTabularFile(filePath: string, sourceType?: TabularFileType): Promise<{ type: TabularFileType; workbook: TabularWorkbookData }> {
+export async function readTabularFile(filePath: string, sourceType?: TabularFileType, delimitedLimits?: DelimitedFileLimits): Promise<{ type: TabularFileType; workbook: TabularWorkbookData }> {
     const type = sourceType ?? detectTabularFileType(filePath);
     if (!type) {
         throw new Error(`Unsupported file extension for "${filePath}"`);
@@ -445,18 +478,18 @@ export async function readTabularFile(filePath: string, sourceType?: TabularFile
     const converter = getConverterForType(type);
     return {
         type,
-        workbook: await converter.read(filePath)
+        workbook: await converter.read(filePath, delimitedLimits)
     };
 }
 
-export async function writeTabularFile(filePath: string, workbook: TabularWorkbookData, targetType?: TabularFileType): Promise<TabularFileType> {
+export async function writeTabularFile(filePath: string, workbook: TabularWorkbookData, targetType?: TabularFileType, delimitedLimits?: DelimitedFileLimits): Promise<TabularFileType> {
     const type = targetType ?? detectTabularFileType(filePath);
     if (!type) {
         throw new Error(`Unsupported file extension for "${filePath}"`);
     }
 
     const converter = getConverterForType(type);
-    await converter.write(filePath, workbook);
+    await converter.write(filePath, workbook, delimitedLimits);
     return type;
 }
 
