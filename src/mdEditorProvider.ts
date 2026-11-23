@@ -9,6 +9,7 @@ import { isAllowedExternalUri } from './shared/externalUri';
 import { writeBufferFileAtomically, writeTextFileAtomically } from './shared/atomicFile';
 import { randomBytes } from 'crypto';
 import { hashBuffer, hashFile } from './shared/fileFingerprint';
+import { buildMarkdownPrintHtml, generateMarkdownPdf, saveMarkdownPrint } from './shared/markdownPdfPrint';
 import type { IncomingMessage } from 'http';
 import { VERSION_HISTORY_RETENTION_MS, VERSION_HISTORY_MAX_ENTRIES, VERSION_HISTORY_MAX_TOTAL_BYTES, buildGroupedVersionHistoryItems, formatVersionHistoryTimestamp, getVersionHistoryFile, getVersionHistoryDir, isSafeSnapshotFile as isSafeHistorySnapshotFile } from './shared/versionHistory';
 
@@ -26,6 +27,20 @@ function sanitizeAppearanceValue(value: unknown, fallback = ''): string {
     return trimmed;
 }
 
+class InvalidMarkdownEncodingError extends Error {
+    constructor() {
+        super('Markdown 文件不是有效的 UTF-8。请在文本编辑器中选择正确的编码重新打开。');
+    }
+}
+
+function decodeMarkdown(bytes: Uint8Array): string {
+    try {
+        return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+    } catch {
+        throw new InvalidMarkdownEncodingError();
+    }
+}
+
 export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vscode.Disposable {
     private readonly toolbarStorage: MdToolbarStorage;
     private readonly panels = new Set<vscode.WebviewPanel>();
@@ -34,6 +49,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
     private readonly themeOutput = vscode.window.createOutputChannel('XLSX Viewer Markdown Theme');
     private readonly scrollDiagnosticsOutput = vscode.window.createOutputChannel('XLSX Viewer Markdown Scroll Diagnostics');
     private readonly themeChange: vscode.Disposable;
+    private isExportingPdf = false;
 
     private async withHistoryLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
         const previous = this.historyTasks.get(key) ?? Promise.resolve();
@@ -141,8 +157,21 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
             let isSaving = false;
             let lastKnownFileHash = '';
 
+            const loadMarkdown = async (): Promise<string> => {
+                const bytes = document.uri.scheme === 'file'
+                    ? await fs.promises.readFile(filePath)
+                    : await vscode.workspace.fs.readFile(document.uri);
+                const content = decodeMarkdown(bytes);
+                currentContent = content;
+                lastKnownFileHash = hashBuffer(bytes);
+                return content;
+            };
+
             const assertFileUnchanged = async () => {
-                if (document.uri.scheme === 'file' && lastKnownFileHash && await hashFile(filePath) !== lastKnownFileHash) {
+                if (!lastKnownFileHash) {
+                    throw new Error('Markdown 尚未成功读取，请在文本编辑器中确认文件编码。');
+                }
+                if (document.uri.scheme === 'file' && await hashFile(filePath) !== lastKnownFileHash) {
                     throw new Error('文件已被外部修改，请先处理冲突后再保存。');
                 }
             };
@@ -321,7 +350,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
 
             const readHistoryContent = async (entry: VersionHistoryEntry): Promise<string> => {
                 if (isSafeSnapshotFile(entry.snapshotFile)) {
-                    return fs.promises.readFile(getSnapshotPath(entry.snapshotFile), 'utf8');
+                    return decodeMarkdown(await fs.promises.readFile(getSnapshotPath(entry.snapshotFile)));
                 }
                 if (typeof entry.content === 'string') {
                     return entry.content;
@@ -329,10 +358,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                 throw new Error('Version snapshot is unavailable');
             };
 
-            const persistVersionSnapshot = async (contentOverride?: string) => {
-                const content = typeof contentOverride === 'string'
-                    ? contentOverride
-                    : await fs.promises.readFile(filePath, 'utf8');
+            const persistVersionSnapshot = async (content: string) => {
                 const contentBytes = Buffer.from(content, 'utf8');
                 if (contentBytes.length > VERSION_HISTORY_MAX_TOTAL_BYTES) {
                     console.warn('Skipping Markdown version snapshot larger than the history size limit.');
@@ -442,10 +468,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                         break;
                     case 'webviewReady':
                         try {
-                            // Read the markdown file
-                            const content = await fs.promises.readFile(filePath, 'utf-8');
-                            currentContent = content;
-                            lastKnownFileHash = hashBuffer(Buffer.from(content, 'utf8'));
+                            const content = await loadMarkdown();
 
                             // Send content to webview
                             webviewPanel.webview.postMessage(buildInitMarkdownPayload(content));
@@ -498,7 +521,17 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                                 kind: vscode.window.activeColorTheme.kind
                             });
                         } catch (err) {
-                            vscode.window.showErrorMessage(`Error reading Markdown file: ${err}`);
+                            if (err instanceof InvalidMarkdownEncodingError) {
+                                void vscode.window.showErrorMessage(err.message);
+                                try {
+                                    await vscode.commands.executeCommand('vscode.openWith', document.uri, 'default');
+                                    webviewPanel.dispose();
+                                } catch (fallbackError) {
+                                    void vscode.window.showErrorMessage(`无法打开 Markdown 文本编辑器：${String(fallbackError)}`);
+                                }
+                            } else {
+                                void vscode.window.showErrorMessage(`Error reading Markdown file: ${err}`);
+                            }
                         }
                         break;
 
@@ -633,13 +666,11 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
 
                     case 'requestFreshData':
                         try {
-                            const content = await fs.promises.readFile(filePath, 'utf-8');
-                            currentContent = content;
-                            lastKnownFileHash = hashBuffer(Buffer.from(content, 'utf8'));
+                            const content = await loadMarkdown();
                             webviewPanel.webview.postMessage(buildInitMarkdownPayload(content));
                             vscode.window.showInformationMessage('Markdown reloaded from disk.');
                         } catch (err) {
-                            vscode.window.showErrorMessage(`Error reading Markdown file: ${err}`);
+                            void vscode.window.showErrorMessage(err instanceof InvalidMarkdownEncodingError ? err.message : `Error reading Markdown file: ${err}`);
                         }
                         break;
 
@@ -710,9 +741,9 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                                 break;
                             }
 
+                            previewVersionContent = await readHistoryContent(picked.entry);
                             previewVersionId = picked.entry.id;
                             previewVersionTimestamp = picked.entry.timestamp;
-                            previewVersionContent = await readHistoryContent(picked.entry);
                             currentContent = previewVersionContent;
 
                             webviewPanel.webview.postMessage(buildInitMarkdownPayload(currentContent));
@@ -735,9 +766,7 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                                         break;
                                     }
 
-                                    const content = await fs.promises.readFile(filePath, 'utf8');
-                                    currentContent = content;
-                                    lastKnownFileHash = hashBuffer(Buffer.from(content, 'utf8'));
+                                    await loadMarkdown();
                                     previewVersionId = null;
                                     previewVersionTimestamp = null;
                                     previewVersionContent = null;
@@ -815,25 +844,11 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
                         }
                         break;
 
-                    case 'savePdfData':
-                        try {
-                            const base64Data = typeof message.data === 'string' ? message.data : '';
-                            if (!base64Data) break;
-
-                            const defaultUri = vscode.Uri.file(filePath.replace(/\.md$/i, '.pdf'));
-                            const saveUri = await vscode.window.showSaveDialog({
-                                defaultUri,
-                                filters: { 'PDF Files': ['pdf'] },
-                                title: 'Export Markdown Preview to PDF'
-                            });
-
-                            if (!saveUri) break;
-
-                            const buffer = Buffer.from(base64Data, 'base64');
-                            await vscode.workspace.fs.writeFile(saveUri, buffer);
-                            vscode.window.showInformationMessage(`PDF exported successfully: ${path.basename(saveUri.fsPath)}`);
-                        } catch (err: any) {
-                            vscode.window.showErrorMessage(`Failed to save PDF: ${err?.message || err}`);
+                    case 'exportMarkdownPdf':
+                        if (lastKnownFileHash) {
+                            await this.exportMarkdownPdf(currentContent, document.uri);
+                        } else {
+                            void vscode.window.showErrorMessage('Markdown 尚未读取，无法导出。');
                         }
                         break;
 
@@ -1248,6 +1263,66 @@ export class MDEditorProvider implements vscode.CustomReadonlyEditorProvider, vs
             <script nonce="${nonce}" src="${scriptUri}"></script>
         </body>
         </html>`;
+    }
+
+    private async exportMarkdownPdf(content: string, uri: vscode.Uri): Promise<void> {
+        if (this.isExportingPdf) {
+            void vscode.window.showInformationMessage('已有 Markdown 导出正在进行。');
+            return;
+        }
+        this.isExportingPdf = true;
+        try {
+            const title = path.basename(uri.fsPath, path.extname(uri.fsPath));
+            const { html, notices } = await buildMarkdownPrintHtml(content, title, async src => {
+                if (uri.scheme !== 'file' || /^(?!file:)[a-z][a-z0-9+.-]*:/i.test(src)) {
+                    return;
+                }
+                const target = await this.resolveMarkdownImageTarget(src, uri);
+                return target?.targetUri.fsPath;
+            });
+            if (this.markdownThemeService.getPayload().status === 'loaded') {
+                notices.push('导出使用打印样式，外置预览主题未应用');
+            }
+            let extension = 'pdf';
+            let output: Buffer;
+            try {
+                if (vscode.env.remoteName) {
+                    throw new Error('远程主机无法调用本机 Ego。');
+                }
+                output = await generateMarkdownPdf(html);
+            } catch (error) {
+                const savePrintHtml = '保存可打印 HTML';
+                const cause = error instanceof Error ? error.message : String(error);
+                if (await vscode.window.showWarningMessage(cause + ' 可保存 HTML 后在浏览器打印为 PDF。', savePrintHtml) !== savePrintHtml) {
+                    return;
+                }
+                extension = 'html';
+                output = Buffer.from(html, 'utf8');
+            }
+            const saveUri = await vscode.window.showSaveDialog({
+                defaultUri: vscode.Uri.file(path.join(path.dirname(uri.fsPath), title + '.' + extension)),
+                filters: { [extension.toUpperCase()]: [extension] },
+                title: extension === 'pdf' ? '导出 Markdown PDF' : '保存可打印的 Markdown HTML'
+            });
+            if (!saveUri) {
+                return;
+            }
+            if (saveUri.scheme !== 'file' || path.extname(saveUri.fsPath).toLowerCase() !== '.' + extension ||
+                path.resolve(saveUri.fsPath) === path.resolve(uri.fsPath)) {
+                throw new Error('请选择一个独立的、本地的 .' + extension + ' 输出文件。');
+            }
+            await saveMarkdownPrint(saveUri.fsPath, output);
+            const label = extension.toUpperCase() + ' 已保存：' + path.basename(saveUri.fsPath);
+            if (notices.length) {
+                void vscode.window.showWarningMessage(label + '。' + notices.join('；') + '。');
+            } else {
+                void vscode.window.showInformationMessage(label);
+            }
+        } catch (error) {
+            void vscode.window.showErrorMessage('无法导出 Markdown：' + String(error));
+        } finally {
+            this.isExportingPdf = false;
+        }
     }
 
     private async resolveMarkdownImageTarget(rawSource: string, documentUri: vscode.Uri): Promise<{ targetUri: vscode.Uri; suffix: string } | null> {

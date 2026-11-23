@@ -28,7 +28,6 @@ import { SettingsManager, SettingDefinition } from '../shared/settingsManager';
 import { ToolbarManager } from '../shared/toolbarManager';
 import { applyToolbarLayout } from '../shared/toolbarLayout';
 import { Utils } from '../shared/utils';
-import { MdToPdfExporter } from './mdToPdfExporter';
 import { MdToolbarController } from './mdToolbarController';
 import { getPreviewEditTrailingNewlines, hasUnsafePreviewEditSource, reconcileEditorLineEndings } from './previewEditSafety';
 import { mappedPreviewDraft, preparePreviewSourceMapping, previewSourceValues, unwrapPreviewSourceRanges, PreviewBlockRange, PreviewSourceMapping } from './previewSourceMapping';
@@ -488,6 +487,13 @@ function isPreviewWysiwygTarget(): boolean {
 
 // ===== Utilities =====
 const $ = Utils.$;
+const reservedMarkdownIds = new Set([
+    'previewDraftRecovery', 'versionPreviewBanner', 'versionPreviewText', 'restoreVersionButton',
+    'cancelVersionPreviewButton', 'toastNotification', 'toastText', 'saveToast', 'editorLineMeasureHost',
+    'xlsx-viewer-external-markdown-theme', 'feedbackForm', 'feedbackSystemDetails', 'feedbackCancelBtn',
+    'feedbackSubmitBtn', 'githubIssueBtn', 'followUpYes', 'followUpNo', 'emailContainer', 'emailInput',
+    'feedbackWarningPopup', 'warningCancelBtn', 'warningSubmitBtn'
+]);
 
 function slugify(text: string) {
     return text
@@ -1162,7 +1168,8 @@ md.renderer.rules.fence = function (tokens: any, idx: number, options: any, env:
 };
 
 function addHeadingIds(tokens: any[]) {
-    const slugCounts: Record<string, number> = {};
+    const slugCounts = new Map<string, number>();
+    const usedIds = new Set(reservedMarkdownIds);
     for (let i = 0; i < tokens.length; i++) {
         const token = tokens[i];
         if (token.type === 'heading_open') {
@@ -1171,9 +1178,13 @@ function addHeadingIds(tokens: any[]) {
             const baseSlug = slugify(text);
             if (!baseSlug) continue;
 
-            const count = (slugCounts[baseSlug] || 0) + 1;
-            slugCounts[baseSlug] = count;
-            const id = count > 1 ? `${baseSlug}-${count}` : baseSlug;
+            let count = (slugCounts.get(baseSlug) ?? 0) + 1;
+            let id = count > 1 ? `${baseSlug}-${count}` : baseSlug;
+            while (usedIds.has(id)) {
+                id = `${baseSlug}-${++count}`;
+            }
+            slugCounts.set(baseSlug, count);
+            usedIds.add(id);
             token.attrSet('id', id);
             token.attrJoin('class', 'md-heading');
         }
@@ -1360,6 +1371,7 @@ function isSafeRenderedUrl(value: string, attributeName: string): boolean {
 function sanitizeRenderedMarkdownHtml(html: string): string {
     const template = document.createElement('template');
     template.innerHTML = html;
+    const parsedStyle = document.createElement('span').style;
 
     template.content.querySelectorAll(
         'script, style, iframe, object, embed, base, meta, link, portal, form, foreignObject'
@@ -1373,8 +1385,27 @@ function sanitizeRenderedMarkdownHtml(html: string): string {
                 return;
             }
 
-            if (name === 'style' && /url\s*\(|@import|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:/i.test(attribute.value)) {
-                element.removeAttribute(attribute.name);
+            if (name === 'id' && reservedMarkdownIds.has(attribute.value)) {
+                element.removeAttribute('id');
+                return;
+            }
+
+            if (name === 'style') {
+                if (/url\s*\(|@import|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:/i.test(attribute.value)) {
+                    element.removeAttribute('style');
+                    return;
+                }
+                parsedStyle.cssText = attribute.value;
+                const position = parsedStyle.getPropertyValue('position').trim().toLowerCase();
+                const hasLayer = Boolean(parsedStyle.getPropertyValue('z-index'));
+                const unsafePosition = position && position !== 'static' && position !== 'relative';
+                if (unsafePosition || hasLayer) {
+                    // KaTeX needs relative positioning and offsets for its inline layout.
+                    if (unsafePosition) parsedStyle.removeProperty('position');
+                    parsedStyle.removeProperty('z-index');
+                    if (parsedStyle.cssText) element.setAttribute('style', parsedStyle.cssText);
+                    else element.removeAttribute('style');
+                }
                 return;
             }
 
@@ -4102,20 +4133,7 @@ function buildToolbarButtons() {
 
                 showToast(I18n.t('toast.pdfGenerating', 'Generating PDF... Please wait.'));
 
-                setTimeout(async () => {
-                    try {
-                        const blob = await MdToPdfExporter.exportToPdf(preview);
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                            const base64Data = (reader.result as string).split(',')[1];
-                            vscode.postMessage({ command: 'savePdfData', data: base64Data });
-                        };
-                        reader.readAsDataURL(blob);
-                    } catch (err: any) {
-                        console.error('PDF export error:', err);
-                        showToast(I18n.t('toast.pdfFailed', 'Failed to generate PDF: {0}', (err?.message || err)));
-                    }
-                }, 50);
+                vscode.postMessage({ command: 'exportMarkdownPdf' });
             }
         },
         {
@@ -6126,6 +6144,8 @@ initScrollSpy();
 initMdScrollToTop();
 initResizeHandles();
 updateHeaderHeight();
+// Snapshot the extension UI before any Markdown document has been rendered.
+document.querySelectorAll('[id]').forEach(element => reservedMarkdownIds.add(element.id));
 
 // Ensure settings are applied once toolbar is ready
 if (currentSettings) {

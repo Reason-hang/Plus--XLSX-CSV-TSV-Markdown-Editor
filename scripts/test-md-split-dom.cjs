@@ -24,12 +24,50 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 (async () => {
     await wait(100);
     w.postMessage({ command: 'initSettings', settings: { stickyToolbar: true, wordWrap: true, syncScroll: true, previewPosition: 'right', language: 'zh' } }, '*');
+    const previewWithHtml = w.document.getElementById('markdownPreview');
+    const styledText = [
+        '# Content',
+        '',
+        '<p id="statusInfo" style="color:red; position:absolute; z-index:1">Ordinary text</p>',
+        '',
+        '<a id="article-note" aria-label="Article note">Note</a>',
+        '',
+        '<p id="previewDraftRecovery">Document paragraph</p>',
+        '',
+        '$\\frac{a}{b}$ and $\\sum_{n=0}^N x_n$'
+    ].join('\n');
+    w.postMessage({ command: 'initMarkdown', content: styledText }, '*');
+    await wait(100);
+    const formattedParagraph = previewWithHtml.querySelector('p[style]');
+    if (!formattedParagraph || formattedParagraph.style.color !== 'red' ||
+        formattedParagraph.style.position || formattedParagraph.style.zIndex) {
+        throw new Error('Markdown inline colors must remain while unsafe positioning is removed');
+    }
+    if (previewWithHtml.querySelector('#statusInfo, #previewDraftRecovery')) {
+        throw new Error('Markdown document IDs must not collide with existing or lazy extension controls');
+    }
+    if (previewWithHtml.querySelector('#article-note')?.getAttribute('aria-label') !== 'Article note') {
+        throw new Error('Markdown preview must preserve ordinary anchor IDs and accessibility labels');
+    }
+    if (previewWithHtml.querySelector('h1.md-heading')?.id !== 'content-2' ||
+        previewWithHtml.querySelector('.heading-anchor')?.getAttribute('href') !== '#content-2') {
+        throw new Error('Generated heading and permalink must agree on an ID away from extension UI');
+    }
+    const math = previewWithHtml.querySelector('.katex');
+    if (!math?.querySelector('[style*="top:"]')) throw new Error('KaTeX layout offsets must remain');
+    if (![...previewWithHtml.querySelectorAll('.katex [style]')].some(element => element.style.position === 'relative')) {
+        throw new Error('KaTeX relative positioning must remain');
+    }
     w.postMessage({ command: 'initMarkdown', content: 'hello world\n' }, '*');
     await wait(100);
     const splitButton = w.document.getElementById('toggleEditModeButton');
     const previewButton = w.document.getElementById('previewEditButton');
     const modeEditor = w.document.getElementById('markdownEditor');
     const modePreview = w.document.getElementById('markdownPreview');
+    w.document.getElementById('exportPdfButton').click();
+    if (JSON.stringify(messages.at(-1)) !== '{"command":"exportMarkdownPdf"}') {
+        throw new Error('PDF export must ask the host to print the current document');
+    }
     const scrollToTop = w.document.getElementById('scrollToTopBtn');
     for (const pane of [modeEditor, modePreview]) pane.scrollTo = ({ top }) => { pane.scrollTop = top; };
     modePreview.scrollTop = 350;

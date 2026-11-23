@@ -11,6 +11,13 @@ suite('Webview 消息边界', () => {
         assert.strictEqual(validateWebviewMessage({ command: 'saveMarkdown', text: '内容', silent: 'yes' }, 'markdown').ok, false);
         assert.strictEqual(validateWebviewMessage({ command: 'saveMarkdown', text: 'x'.repeat(WEBVIEW_LIMITS.maxMarkdownContentBytes + 1) }, 'markdown').ok, false);
     });
+    test('仅 Markdown 可以请求导出 PDF，导出源由宿主读取', () => {
+        const request = { command: 'exportMarkdownPdf' };
+        assert.strictEqual(validateWebviewMessage(request, 'markdown').ok, true);
+        assert.strictEqual(validateWebviewMessage(request, 'spreadsheet').ok, false);
+        assert.strictEqual(validateWebviewMessage({ ...request, html: '<p>其他内容</p>' }, 'markdown').ok, false);
+        assert.strictEqual(validateWebviewMessage({ command: 'savePdfData', data: 'YWJj' }, 'markdown').ok, false);
+    });
     test('拒绝未知命令和非法坐标', () => {
         assert.strictEqual(validateWebviewMessage({ command: 'unknown' }, 'spreadsheet').ok, false);
         assert.strictEqual(validateWebviewMessage({ command: 'getRows', start: -1, end: 2, sheetIndex: 0, requestId: 'r' }, 'spreadsheet').ok, false);
